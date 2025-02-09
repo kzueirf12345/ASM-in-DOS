@@ -14,6 +14,13 @@ VC_RAMKA_GAP	equ 2
 SYM_LF			equ 0ah
 SYM_CR			equ 0dh
 
+TWO_SECONDS1	equ 1eh
+TWO_SECONDS2	equ 8480h
+ONE_SECONDS1	equ 0fh
+ONE_SECONDS2	equ 4240h
+HUNDRED_MSECONDS1	equ 1h
+HUNDRED_MSECONDS2	equ 86A0h
+
 Start:		
 	mov cx, VIDEOSEG
 	mov es, cx
@@ -21,19 +28,67 @@ Start:
 	mov di, offset Vstring
 	call CountTextSizes
 
+	call RamkaOffset ; set in bx offset in segment
+
+	mov dx, ax
+	add dh, GC_RAMKA_GAP*2
+	add dl, VC_RAMKA_GAP*2
+	call MinMax
+	sub dh, dl ; dh - diff, dl - min
+
+	push ax
+
+	cmp ah, al
+jl DidSwap
+	mov ah, dh
+	xor al, al
+jmp EndDidSwap
+DidSwap:
+	mov al, dh
+	xor ah, ah
+EndDidSwap:
+
+	mov di, offset Vsymbols
+	xor cl, cl
+ZoomRamkaCycle:
+	push ax
+	push bx
+	push cx
+	push dx
+	push di
+
+	call RamkaOffset
+	call PrintRamka
+
+	mov ah, 86h
+	mov cx, HUNDRED_MSECONDS1
+	mov dx, HUNDRED_MSECONDS2
+	int 15h ;pause
+
+	pop di
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+
+	inc ah
+	inc al
+	inc cl
+	cmp cl, dl
+jne ZoomRamkaCycle
+
+	call RamkaOffset
+
+	pop ax
 
 ; ;-----------------DEBUG------------------------------
 ; 	mov byte ptr es:[DEBUG_OFFSET], al
 ; 	mov byte ptr es:[DEBUG_OFFSET+2], ah
 ; ;-----------------DEBUG------------------------------
 
-	call RamkaOffset ; set in bx offset in segment
 	push bx
-
 	mov di, offset Vsymbols
-
-	call PrintRamka
-
+	call PrintRamkaWithGap
 	pop bx
 
 	mov di, offset Vstring
@@ -43,6 +98,161 @@ Start:
 	int 21h
 
 ;=====================FUNCS===================
+
+;---------------------------------------------
+;Descript: 	Count sizes of text with 0 in end
+;Entry: 	DI = Start text
+;Exit: 		AH = max count symbols in text line
+;			AL = count \n text
+;Destroy: 	DI, CX, DX
+;---------------------------------------------
+CountTextSizes	proc
+	xor ax, ax
+	xor cx, cx
+
+CountTextSizes_Cycle:
+	mov cl, byte ptr [di] ; remember
+	cmp cl, SYM_CR
+jne CountTextSizes_NoNewLine
+	inc di ; skip LF
+
+	mov dl, ah; update max ah
+	mov dh, ch
+	call MinMax
+	mov ah, dh
+
+	xor ch, ch
+
+	inc al ; ++count_\n
+CountTextSizes_NoNewLine:
+	test cl, cl ; is end of text equal zero
+je	CountTextSizes_CycleEnd
+	inc ch
+	inc di
+jmp	CountTextSizes_Cycle
+CountTextSizes_CycleEnd:
+
+	mov dl, ah; update max ah
+	mov dh, ch
+	call MinMax
+	mov ah, dh
+
+	ret
+endp
+
+;---------------------------------------------
+;Descript: 	Print ramka with gap
+;Entry: 	AH = max count symbols in text line
+;			AL = count \n text
+;			BX = ramka offset 
+;			DI = Start nine char's types
+;			ES = Num segment
+;Exit: 		None
+;Destroy: 	CX AX BX DI
+;---------------------------------------------
+PrintRamkaWithGap	proc
+	add ah, 2*GC_RAMKA_GAP ; set count non repeat symbols
+	add al, 2*VC_RAMKA_GAP + 1
+
+	call PrintRamka
+
+	ret
+endp
+
+;---------------------------------------------
+;Descript: 	Print ramka
+;Entry: 	AH = width - 2
+;			AL = height - 2
+;			BX = ramka offset 
+;			DI = Start nine char's types
+;			ES = Num segment
+;Exit: 		None
+;Destroy: 	CX AL BX DI
+;---------------------------------------------
+PrintRamka	proc
+
+	push bx
+	call PrintLine
+	pop bx
+
+	add di, 3 ; next triple symbols
+	test al, al
+je PrintRamka_CycleEnd
+PrintRamka_Cycle:
+	add bx, WC_WIDTH*2 ; next line
+	push bx
+	call PrintLine
+	pop bx
+
+	dec al
+	test al, al
+jne PrintRamka_Cycle
+PrintRamka_CycleEnd:
+
+	add di, 3 ; next triple symbols
+	add bx, WC_WIDTH*2 ; next line
+	call PrintLine
+
+	ret
+endp
+
+;---------------------------------------------
+;Descript: 	Print line
+;Entry: 	AH = count non repeat symbols
+;			BX = Offset in segment for start print
+;			DI = Start three char's types
+;			ES = Num segment
+;Exit: 		None
+;Destroy: 	CX BX
+;---------------------------------------------
+PrintLine	proc
+	mov cl, byte ptr [di]
+	mov es:[bx], cl ; puts(di[0])
+
+	mov ch, ah ; for cycle
+	or ch, ch
+je PrintLine_CycleEnd
+PrintLine_Cycle: 
+	add bx, 2
+	mov cl, byte ptr [di+1]
+	mov es:[bx], cl ; puts(di[0])
+
+	dec ch
+	or ch, ch
+jne PrintLine_Cycle
+PrintLine_CycleEnd:
+
+	mov cl, byte ptr [di+2]
+	mov es:[bx+2], cl ; puts(di[0])
+	ret
+endp
+
+;---------------------------------------------
+;Descript: 	Calculate ramka's offset
+;Entry: 	AH = width
+;			AL = height
+;Exit: 		BX = ramka's offset
+;Destroy: 	CX
+;---------------------------------------------
+RamkaOffset	proc
+
+	; mov bx, WC_WIDTH - (2*GC_RAMKA_GAP + 2) ;calculate gorizontal offset
+	mov bx, WC_WIDTH ;calculate gorizontal offset
+	mov cl, ah 
+	xor ch, ch
+	sub bx, cx
+	and bx, 11111110b ; for chet
+	
+	; mov cl, WC_HEIGHT - (2*VC_RAMKA_GAP + 2 + 1) + 3 ;calculate vertical offset
+	mov cl, WC_HEIGHT ;calculate vertical offset
+	sub cl, al
+	and cx, 11111110b ; for chet
+	imul cx, WC_WIDTH
+
+	add bx, cx
+
+	ret
+endp
 
 ;---------------------------------------------
 ;Descript: 	print text with 0 in end
@@ -80,172 +290,21 @@ PrintText_CycleEnd:
 endp
 
 ;---------------------------------------------
-;Descript: 	Count sizes of text with 0 in end
-;Entry: 	DI = Start text
-;Exit: 		AH = max count symbols in text line
-;			AL = count \n text
-;Destroy: 	DI, CX, DX
-;---------------------------------------------
-CountTextSizes	proc
-	xor ax, ax
-	xor cx, cx
-
-CountTextSizes_Cycle:
-	mov cl, byte ptr [di] ; remember
-	cmp cl, SYM_CR
-jne CountTextSizes_NoNewLine
-	inc di ; skip LF
-
-	mov dl, ah; update max ah
-	mov dh, ch
-	call Max
-	mov ah, dl
-
-	xor ch, ch
-
-	inc al ; ++count_\n
-CountTextSizes_NoNewLine:
-	test cl, cl ; is end of text equal zero
-je	CountTextSizes_CycleEnd
-	inc ch
-	inc di
-jmp	CountTextSizes_Cycle
-CountTextSizes_CycleEnd:
-
-	mov dl, ah; update max ah
-	mov dh, ch
-	call Max
-	mov ah, dl
-
-	ret
-endp
-
-;---------------------------------------------
-;Descript: 	Print ramka
-;Entry: 	AH = max count symbols in text line
-;			AL = count \n text
-;			BX = ramka offset 
-;			DI = Start nine char's types
-;			ES = Num segment
-;Exit: 		None
-;Destroy: 	CX AX BX
-;---------------------------------------------
-PrintRamka	proc
-	add ah, 2*GC_RAMKA_GAP ; set count non repeat symbols
-
-	push bx
-	call PrintLine
-	pop bx
-
-	add di, 3 ; next triple symbols
-	add al, 2*VC_RAMKA_GAP + 1
-PrintRamka_Cycle:
-	
-	add bx, WC_WIDTH*2 ; next line
-	push bx
-	call PrintLine
-	pop bx
-
-	dec al
-	or al, al
-jne PrintRamka_Cycle
-
-	add di, 3 ; next triple symbols
-	add bx, WC_WIDTH*2 ; next line
-	call PrintLine
-
-	ret
-endp
-
-;---------------------------------------------
-;Descript: 	Calculate ramka's offset
-;Entry: 	AH = max count symbols in text line
-;			AL= count \n text
-;Exit: 		BX = ramka's offset
-;Destroy: 	CX
-;---------------------------------------------
-RamkaOffset	proc
-
-	mov bx, WC_WIDTH - (2*GC_RAMKA_GAP + 2) ;calculate gorizontal offset
-	mov cl, ah 
-	xor ch, ch
-	sub bx, cx
-	and bx, 11111110b ; for chet
-	
-	mov cl, WC_HEIGHT - (2*VC_RAMKA_GAP + 2 + 1) + 3 ;calculate vertical offset
-	sub cl, al
-	and cx, 11111110b ; for chet
-	imul cx, WC_WIDTH
-
-	add bx, cx
-
-	ret
-endp
-;---------------------------------------------
-;Descript: 	Print line
-;Entry: 	AH = count non repeat symbols
-;			BX = Offset in segment for start print
-;			DI = Start three char's types
-;			ES = Num segment
-;Exit: 		None
-;Destroy: 	CX BX
-;---------------------------------------------
-PrintLine	proc
-	mov cl, byte ptr [di]
-	mov es:[bx], cl ; puts(di[0])
-
-	mov ch, ah ; for cycle
-	or ch, ch
-je PrintLine_CycleEnd
-PrintLine_Cycle: 
-	add bx, 2
-	mov cl, byte ptr [di+1]
-	mov es:[bx], cl ; puts(di[0])
-
-	dec ch
-	or ch, ch
-jne PrintLine_Cycle
-PrintLine_CycleEnd:
-
-	mov cl, byte ptr [di+2]
-	mov es:[bx+2], cl ; puts(di[0])
-	ret
-endp
-
-;---------------------------------------------
-;Descript: 	Get Max
-;Entry: 	DL = First
-;			DH = Second
-;Exit: 		DL = MAX
-;Destroy: 	None
-;---------------------------------------------
-Max	proc
-	cmp dl, dh
-
-jge Max_SkipSwap
-	mov dl, dh
-Max_SkipSwap:
-
-	xor dh, dh
-
-	ret
-endp
-
-;---------------------------------------------
 ;Descript: 	Get Min
 ;Entry: 	DL = First
 ;			DH = Second
-;Exit: 		DL = MIN
-;Destroy: 	None
+;Exit: 		DH = MAX
+;			DL = MIN
+;Destroy:	CH
 ;---------------------------------------------
-Min	proc
+MinMax	proc
 	cmp dl, dh
 
 jle Min_SkipSwap
+	mov ch, dl
 	mov dl, dh
+	mov dh, ch
 Min_SkipSwap:
-
-	xor dh, dh
 
 	ret
 endp
