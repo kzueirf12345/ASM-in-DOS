@@ -35,16 +35,16 @@ TEN_MSECONDS		equ 2710h
 ;===================MAIN=========================
 
 Start:
-;;; Set num videoseg segment
-	mov cx, VIDEOSEG
-	mov es, cx
-
 ;;; AH = max count symbols in text line
 ;;; AL = count \n text
 	mov di, offset Vstring
 	call CountTextSizes
 
-;;; dh = |ah-al|, dl - min(ah, al)
+;;; Set num videoseg segment
+	mov cx, VIDEOSEG
+	mov es, cx
+
+;;; dh = |ah-al|, dl = min(ah, al)
 	mov dx, ax
 	add dh, GC_RAMKA_GAP*2
 	add dl, VC_RAMKA_GAP*2
@@ -65,34 +65,8 @@ qqDidSwap:
 	xor ah, ah
 qqEndDidSwap:
 
-
 	mov di, offset Vsymbols
-	xor cl, cl ; counter
-qqZoomRamkaCycle:
-	push ax 
-	push cx
-	push dx
-	push di
-
-	call RamkaOffset
-	call PrintRamka
-
-;;; Pause
-	mov ah, 86h
-	mov cx, HUNDRED_MSECONDS1
-	; xor cx, cx
-	mov dx, HUNDRED_MSECONDS2
-	int 15h
-
-	pop di
-	pop dx
-	pop cx
-	pop ax
-
-	add ax, 101h ; inc al, inc ah
-	inc cl
-	cmp cl, dl
-jne qqZoomRamkaCycle
+	call ZoomRamka
 
 	call RamkaOffset
 
@@ -114,41 +88,77 @@ jne qqZoomRamkaCycle
 
 ;---------------------------------------------
 ;Descript: 	Count sizes of text with 0 in end
-;Entry: 	DI = Start text
+;Entry: 	ES:DI = Start text
 ;Exit: 		AH = max count symbols in text line
-;			AL = count \n text
-;Destroy: 	DI, CX, DX
+;			AL = count text line
+;Destroy: 	DI, CL, DX
 ;---------------------------------------------
 CountTextSizes	proc
-	xor ax, ax
-	xor cx, cx
+
+;	al - sym
+;	cl - counter
+; 	dl - new val in minmax
+; 	dh - max
+; 	ah - count text line
+
+	xor ah, ah			; ah = 0
+	mov al, SYM_CR 		; for scasb
 
 qqCycle:
-	mov cl, byte ptr [di] ; remember
-	cmp cl, SYM_CR
-jne qqNoNewLine
-	inc di ; skip LF
+	inc ah				; ++ah (new line)
 
-	mov dl, ah; update max ah
-	mov dh, ch
-	call MinMax
-	mov ah, dh
+	mov cl, WC_WIDTH 	; set counter
+	repne scasb			; while(es:[di++] != al && cl != 0) 
 
-	xor ch, ch
+	mov dl, WC_WIDTH	; dl = WC_WIDTH - cl
+	sub dl, cl
+	call MinMax 		; dh max= dl
 
-	inc al ; ++count_\n
-qqNoNewLine:
-	test cl, cl ; is end of text equal zero
-je	qqCycleEnd
-	inc ch
-	inc di
-jmp	qqCycle
-qqCycleEnd:
+	cmp byte ptr [di], SYM_LF
+je qqCycle
+	mov al, dh
 
-	mov dl, ah; update max ah
-	mov dh, ch
-	call MinMax
-	mov ah, dh
+	xchg ah, al
+
+	ret
+endp
+
+;---------------------------------------------
+;Descript: 	print small versions ramka without text up to the present size
+;Entry: 	DI = nine ramka's symbols
+;			AH = count updrages
+;			AL = start larger side size
+;REMARK:	If vertical size > gorizontal size => swap ah and al
+;			DL = end max side size
+;Exit: 		None
+;Destroy: 	AX BX CX DX DI
+;---------------------------------------------
+ZoomRamka	proc
+
+	xor dh, dh 				; counter = 0
+qqCycle:
+	push ax
+	push dx
+	push di
+
+	call RamkaOffset
+	call PrintRamka
+
+;;; Pause
+	mov ah, 86h
+	mov cx, HUNDRED_MSECONDS1
+	; xor cx, cx
+	mov dx, HUNDRED_MSECONDS2
+	int 15h
+
+	pop di
+	pop dx
+	pop ax
+
+	add ax, 101h 			; ++al, ++ah
+	inc dh
+	cmp dh, dl
+jne qqCycle
 
 	ret
 endp
@@ -328,6 +338,6 @@ Vsymbols db '+-+|.|+-+'
 Vstring db 'Sweat February 14th Valentine!', SYM_CR, SYM_LF, \
 		   'Ded lox hihihi', SYM_CR, SYM_LF, \
 		   'Mne sosal Stepa Gizunov', SYM_CR, SYM_LF,\
-		   'Masik kupi mne mashinku!!!', SYM_HEART, \
+		   'Masik kupi mne mashinku!!!', SYM_HEART, SYM_CR, \
 		   0h
 end Start
