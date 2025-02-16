@@ -39,12 +39,24 @@ Start:
     mov di, offset String
     call CountTextSizes
 
-;-----------------DEBUG--------------------------
-	mov cx, VIDEOSEG
-	mov es, cx
-	mov byte ptr es:[DEBUG_OFFSET], bl
-	mov byte ptr es:[DEBUG_OFFSET+2], bh
-;-----------------DEBUG--------------------------
+; ;-----------------DEBUG--------------------------
+; 	mov cx, VIDEOSEG
+; 	mov es, cx
+; 	mov byte ptr es:[DEBUG_OFFSET], bl
+; 	mov byte ptr es:[DEBUG_OFFSET+2], bh
+
+;     mov di, DEBUG_OFFSET+4
+;     xor cx, cx
+;     mov cl, bh
+;     mov si, offset StringSizes
+; qqCycle:
+;     mov al, byte ptr [si]
+;     stosb
+;     add di, 2
+;     inc si
+; loop qqCycle
+; ;-----------------DEBUG--------------------------
+
 
     mov ax, 4c00h; end programm
 	int 21h
@@ -55,10 +67,10 @@ Start:
 ;Descript: 	Count sizes of text with 0 in end,
 ;           Max size of line - WC_WIDTH
 ;Entry: 	ES:DI = Start text
-;Exit: 		BH = max count symbols in text line
-;			BL = count text line
+;Exit: 		BH = count text line
+;			BL = max count symbols in text line
 ;			fill string_sizes
-;Destroy: 	DI, AL, CX, DX
+;Destroy: 	DI, AL, CX, DX, BX
 ;---------------------------------------------
 CountTextSizes	proc
 
@@ -75,6 +87,14 @@ qqCycle:
 ;;; dl = WC_WIDTH - cl (line size)
 	mov dl, WC_WIDTH - 1
 	sub dl, cl
+
+;;; *StingSizes + (bh-1) = dl
+    push bx
+    shr bx, 2*4
+    add bx, offset StringSizes
+    dec bx
+    mov byte ptr [bx], dl
+    pop bx
 
 	call MinMax 		; dh max= dl
 
