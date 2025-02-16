@@ -4,10 +4,23 @@
 locals qq
 org 100h
 
-; ;-----------------DEBUG------------------------------
-; 	mov byte ptr es:[DEBUG_OFFSET], al
-; 	mov byte ptr es:[DEBUG_OFFSET+2], ah
-; ;-----------------DEBUG------------------------------
+; ;-----------------DEBUG--------------------------
+; 	mov cx, VIDEOSEG
+; 	mov es, cx
+; 	mov byte ptr es:[DEBUG_OFFSET], bl
+; 	mov byte ptr es:[DEBUG_OFFSET+2], bh
+
+;     mov di, DEBUG_OFFSET+4
+;     xor cx, cx
+;     mov cl, bh
+;     mov si, offset StringSizes
+; qqCycle:
+;     mov al, byte ptr [si]
+;     stosb
+;     add di, 2
+;     inc si
+; loop qqCycle
+; ;-----------------DEBUG--------------------------
 
 DEBUG_OFFSET		equ 880
 
@@ -32,193 +45,235 @@ HUNDRED_MSECONDS1	equ 1h
 HUNDRED_MSECONDS2	equ 86A0h
 TEN_MSECONDS		equ 2710h
 
-;===================MAIN=========================
+;=======================MAIN======================
 
 Start:
-;;; AH = max count symbols in text line
-;;; AL = count \n text
-	mov di, offset Vstring
-	call CountTextSizes
+    mov di, offset String
+    call CountTextSizes
 
-;;; Set num videoseg segment
-	mov cx, VIDEOSEG
-	mov es, cx
+    mov cx, dx
+    add cx, (2*GC_RAMKA_GAP) + 2
+    add bx, (2*VC_RAMKA_GAP) + 2
+    mov ax, VIDEOSEG
+	mov es, ax
+    mov si, offset Symbols
+    mov ah, 01101110b
 
-;;; dh = |ah-al|, dl = min(ah, al)
-	mov dx, ax
-	add dh, GC_RAMKA_GAP*2
-	add dl, VC_RAMKA_GAP*2
-	call MinMax
-	sub dh, dl
+    push cx
+    push bx
+    call ZoomRamka
+    pop bx
+    pop cx
 
-;;; Save text sizes
-	push ax
+    call CountRamkaOffset
 
-;;; Set start ramka sizes in ah, al (min = 0)
-	cmp ah, al
-jl qqDidSwap
-	mov ah, dh
-	xor al, al
-jmp qqEndDidSwap
-qqDidSwap:
-	mov al, dh
-	xor ah, ah
-qqEndDidSwap:
 
-	mov di, offset Vsymbols
-	call ZoomRamka
+    ; mov cx, dx
+    ; add bx, (2*VC_RAMKA_GAP)
+    ; add cx, (2*GC_RAMKA_GAP)
+    ; add bx, 2               ; borders
+    ; add cx, 2               ; borders
+    ; call CountRamkaOffset
 
-	call RamkaOffset
+    ; dec bx
+    ; mov ax, VIDEOSEG
+	; mov es, ax
+    ; mov si, offset Symbols
+    ; mov ah, 01101110b
 
-;;; Save text sizes
-	pop ax
+    ; push cx
+    ; push di
+    ; call PrintRamka
+    ; pop di
+    ; pop cx
 
-	push bx
-	mov di, offset Vsymbols
-	call PrintRamkaWithGap
-	pop bx
+    add di, (1+VC_RAMKA_GAP)*WC_WIDTH*2 ; border + gap
+    mov si, offset String
+    mov bx, offset StringSizes
 
-	mov di, offset Vstring
-	call PrintText
+    call PrintText
 
-	mov ax, 4c00h; end programm
+
+    mov ax, 4c00h           ; end programm
 	int 21h
 
-;=====================FUNCS===================
+;=======================FUNCS======================
 
 ;---------------------------------------------
-;Descript: 	Count sizes of text with 0 in end
+;Descript: 	Count sizes of text with 0 in end,
+;           Max size of line - WC_WIDTH
 ;Entry: 	ES:DI = Start text
-;Exit: 		AH = max count symbols in text line
-;			AL = count text line
+;Exit: 		DX = max count symbols in text line
+;			BX = count text line
 ;			fill string_sizes
-;Destroy: 	DI, CX, DX, BX
+;Destroy: 	DI, AX, CX, DX, BX
 ;---------------------------------------------
 CountTextSizes	proc
 
-;	al - sym
-;	cl - counter
-; 	dl - new val in minmax
-; 	dh - max
-; 	ah - count text line
-
-	xor ah, ah			; ah = 0
-	mov al, SYM_CR 		; for scasb
+	xor bx, bx			; bx = 0
+    xor dx, dx          ; dx = 0
 
 qqCycle:
-	inc ah				; ++ah (new line)
+	inc bx				; ++bx (new line)
 
-	mov cl, WC_WIDTH 	; set counter
-	repne scasb			; while(es:[di++] != al && cl != 0) 
+	mov cx, WC_WIDTH 	; set counter
+    mov al, SYM_CR 		; Stop symbol
+	repne scasb			; while(es:[di++] != al && cx != 0) 
 
-	mov dl, WC_WIDTH - 1; dl = WC_WIDTH - cl
-	sub dl, cl
+;;; ax = WC_WIDTH - 1 - cx (line size)
+	mov ax, WC_WIDTH - 1
+	sub ax, cx
 
-;;; string_sizes[ah-1] = dl
-	mov bl, ah 
-	add bx, offset StringSizes
+;;; dx max= ax
+    cmp dx, ax
+jge qqSkipSwap
+    mov dx, ax
+qqSkipSwap:
 
-	call MinMax 		; dh max= dl
+;;; *StingSizes + (2*(bx-1)) = ax
+    push bx
+    dec bx
+    shl bx, 1
+    add bx, offset StringSizes
+    mov word ptr [bx], ax
+    pop bx
 
-	cmp byte ptr [di], SYM_LF
-je qqCycle
-
-	mov al, dh
-	xchg ah, al ;\\TODO - FIXME
-	ret
-endp
-
-;---------------------------------------------
-;Descript: 	print small versions ramka without text up to the present size
-;Entry: 	DI = nine ramka's symbols
-;			AH = count updrages
-;			AL = start larger side size
-;REMARK:	If vertical size > gorizontal size => swap ah and al
-;			DL = end max side size
-;Exit: 		None
-;Destroy: 	AX BX CX DX DI
-;---------------------------------------------
-ZoomRamka	proc
-
-	xor dh, dh 				; counter = 0
-qqCycle:
-	push ax
-	push dx
-	push di
-
-	call RamkaOffset
-	call PrintRamka
-
-;;; Pause
-	mov ah, 86h
-	mov cx, HUNDRED_MSECONDS1
-	; xor cx, cx
-	mov dx, HUNDRED_MSECONDS2
-	int 15h
-
-	pop di
-	pop dx
-	pop ax
-
-	add ax, 101h 			; ++al, ++ah
-	inc dh
-	cmp dh, dl
+	cmp byte ptr [di], 0h
 jne qqCycle
 
 	ret
 endp
 
 ;---------------------------------------------
-;Descript: 	Print ramka with gap
-;Entry: 	AH = max count symbols in text line
-;			AL = count \n text
-;			BX = ramka offset 
-;			DI = Start nine char's types
-;			ES = Num segment
-;Exit: 		None
-;Destroy: 	CX AX BX DI
+;Descript: 	Calculate ramka's offset
+;Entry: 	CX = width
+;			BX = height
+;Exit: 		DI = ramka's offset
+;Destroy: 	AX
 ;---------------------------------------------
-PrintRamkaWithGap	proc
-	add ah, 2*GC_RAMKA_GAP ; set count non repeat symbols
-	add al, 2*VC_RAMKA_GAP + 1
+CountRamkaOffset	proc
 
+;;; calculate gorizontal offset
+;;; (WC_WIDTH - CX)*2/2
+	mov di, WC_WIDTH
+	sub di, cx
+    and di, 0FFFEh          ; for chet
+	
+;;; calculate vertical offset
+;;; ((WC_HEIGHT - BX + 2)*2/2)*WC_WIDTH
+	mov ax, WC_HEIGHT 
+	sub ax, bx
+    add ax, 2               ; because scroll
+	and ax, 0FFFEh          ; for chet
+	imul ax, WC_WIDTH
+
+	add di, ax
+
+	ret
+endp
+
+;---------------------------------------------
+;Descript: 	print small versions ramka without 
+;           text up to the present size
+;Entry: 	AH = color
+;			CX = final width - 2
+;           BX = final height - 1
+;           SI = Start nine char's types
+;           ES = videoseg
+;Exit: 		None
+;Destroy: 	BX, CX, DX
+;---------------------------------------------
+ZoomRamka	proc
+
+;;; dx = min(cx, bx)
+;;; min(cx, bx) = 0
+;;; max(cx, bx) -= min(cx, bx)
+    cmp cx, bx
+jle qqWidthGreater
+    sub cx, bx
+    mov dx, bx
+    xor bx, bx
+jmp qqEndSwap
+qqWidthGreater:
+    sub bx, cx
+    mov dx, cx
+    xor cx, cx
+qqEndSwap:
+
+
+qqCycle:
+;;; next size
+	inc cx 
+    inc bx
+
+	push ax
+    push bx
+    push cx
+	push dx
+	push si
+
+    push ax
+	call CountRamkaOffset
+    pop ax
+    dec bx
 	call PrintRamka
+
+;;; Pause
+	mov ah, 86h
+	mov cx, HUNDRED_MSECONDS1
+	mov dx, HUNDRED_MSECONDS2
+	int 15h
+
+	pop si
+	pop dx
+    pop cx
+    pop bx
+	pop ax
+
+    dec dx
+	test dx, dx
+jne qqCycle
 
 	ret
 endp
 
 ;---------------------------------------------
 ;Descript: 	Print ramka
-;Entry: 	AH = width - 2
-;			AL = height - 2
-;			BX = ramka offset 
-;			DI = Start nine char's types
-;			ES = Num segment
-;Exit: 		None
-;Destroy: 	CX AL BX DI
+;Entry: 	AH = color
+;           CX = width - 2
+;			BX = height - 1
+;           ES:DI = videoseg start place
+;			SI = Start nine char's types
+;Exit: 		
+;Destroy: 	AL, BX, CX, DI, SI
 ;---------------------------------------------
 PrintRamka	proc
 
-	push bx
+    push cx
+    push di
 	call PrintLine
-	pop bx
+    pop di
+    pop cx
 
-	add di, 3 ; next triple symbols
-	test al, al
+	add si, 3           ; next triple symbols
+	test bx, bx
 je qqCycleEnd
 qqCycle:
-	add bx, WC_WIDTH*2 ; next line
-	push bx
-	call PrintLine
-	pop bx
+	add di, WC_WIDTH*2  ; next line
 
-	dec al
-	test al, al
+    push cx
+    push di
+	call PrintLine
+    pop di
+    pop cx
+
+	dec bx
+	test bx, bx
 jne qqCycle
 qqCycleEnd:
 
-	add di, 3 ; next triple symbols
-	add bx, WC_WIDTH*2 ; next line
+	add si, 3           ; next triple symbols
+	add bx, WC_WIDTH*2  ; next line
 	call PrintLine
 
 	ret
@@ -226,124 +281,91 @@ endp
 
 ;---------------------------------------------
 ;Descript: 	Print line
-;Entry: 	AH = count non repeat symbols
-;			BX = Offset in segment for start print
-;			DI = Start three char's types
-;			ES = Num segment
-;Exit: 		None
-;Destroy: 	CX BX
+;Entry: 	CX = count non repeat symbols
+;           AH = color
+;           SI = three char's types
+;			ES:DI = videoseg start place
+;Exit: 		DI = address after last printed symbol
+;Destroy: 	AL, CX
 ;---------------------------------------------
 PrintLine	proc
-	mov cl, byte ptr [di]
-	mov es:[bx], cl ; puts(di[0])
 
-	mov ch, ah ; for cycle
-	or ch, ch
-je qqCycleEnd
-qqCycle: 
-	add bx, 2
-	mov cl, byte ptr [di+1]
-	mov es:[bx], cl ; puts(di[0])
+    mov al, [si]
+    stosw
 
-	dec ch
-	or ch, ch
-jne qqCycle
-qqCycleEnd:
+    mov al, [si+1]
+    rep stosw
 
-	mov cl, byte ptr [di+2]
-	mov es:[bx+2], cl ; puts(di[0])
-	ret
-endp
-
-;---------------------------------------------
-;Descript: 	Calculate ramka's offset
-;Entry: 	AH = width
-;			AL = height
-;Exit: 		BX = ramka's offset
-;Destroy: 	CX
-;---------------------------------------------
-RamkaOffset	proc
-
-	; mov bx, WC_WIDTH - (2*GC_RAMKA_GAP + 2) ;calculate gorizontal offset
-	mov bx, WC_WIDTH ;calculate gorizontal offset
-	mov cl, ah 
-	xor ch, ch
-	sub bx, cx
-	and bx, 11111110b ; for chet
-	
-	; mov cl, WC_HEIGHT - (2*VC_RAMKA_GAP + 2 + 1) + 3 ;calculate vertical offset
-	mov cl, WC_HEIGHT ;calculate vertical offset
-	sub cl, al
-	and cx, 11111110b ; for chet
-	imul cx, WC_WIDTH
-
-	add bx, cx
+	mov al, [si+2]
+    stosw
 
 	ret
 endp
 
 ;---------------------------------------------
 ;Descript: 	print text with 0 in end
-;Entry: 	BX = ramka offset 
-;			DI = Start text
+;           lines separate with SYM_CR, SYM_LF
+;           last symbol in last line SYM_CR
+;Entry: 	DS:SI = text
+;           DS:BX = string sizes
+;			ES:DI = RAMKA videoseg start place
+;           CX = ramka width
 ;Exit: 		None
-;Destroy: 	DI, BX, CH, AX
+;Destroy: 	
 ;---------------------------------------------
 PrintText 	proc
-	add bx, (VC_RAMKA_GAP + 1)*WC_WIDTH*2 + (GC_RAMKA_GAP+1)*2; add padding in ramka
 	
-	mov ax, bx
+qqCycle:
+    push di
+    call PrintTextLine
+    pop di
+
+    add di, WC_WIDTH*2      ; next videoseg line
+    add bx, 2               ; next line size
+
+    cmp byte ptr [si], 0h
+jne qqCycle
+
+	ret
+endp
+
+;---------------------------------------------
+;Descript: 	print text line with SYM_CR in end
+;Entry: 	DS:SI = text
+;           DS:BX = address string size
+;			ES:DI = RAMKA videoseg start place
+;                 + count_prev_lines*WC_WIDTH
+;           CX = ramka width
+;Exit: 		SI = symbol in line after SYM_CR
+;Destroy: 	DI
+;---------------------------------------------
+PrintTextLine 	proc
+
+;;; add gorizontal padding
+;;; (cx - [bx] + 1)*2/2
+    add di, cx
+    sub di, word ptr ds:[bx]
+    add di, 2
+    and di, 0FFFEh  ; for chet
 
 qqCycle:
-	mov ch, byte ptr [di] ; remember
-	test ch, ch ; check end
-je qqCycleEnd
-	cmp ch, SYM_CR
-jne qqNoNewLine
-	add di, 2 ; skip LF
+    movsb
 
-	mov bx, ax
-	add bx, WC_WIDTH*2 ; next print line
-	mov ax, bx
-jmp qqCycle
-qqNoNewLine:
-	mov es:[bx], ch ; puts(*di)
-
-	add bx, 2
-	inc di ; next symbol
-jmp qqCycle
-qqCycleEnd:
+    inc di          ; skip color byte
+    cmp byte ptr ds:[si], SYM_CR
+jne qqCycle
+    inc si          ; next sym
 
 	ret
 endp
 
-;---------------------------------------------
-;Descript: 	Get Min
-;Entry: 	DL = First
-;			DH = Second
-;Exit: 		DH = MAX
-;			DL = MIN
-;Destroy:	CH
-;---------------------------------------------
-MinMax	proc
-	cmp dl, dh
-
-jle qqSkipSwap
-	mov ch, dl
-	mov dl, dh
-	mov dh, ch
-qqSkipSwap:
-
-	ret
-endp
-
-;===================DATA======================
 .data
-Vsymbols db '+-+|.|+-+'
-Vstring db 	'Sweat February 14th Valentine!', SYM_CR, SYM_LF, \
-		   'Ded lox hihihi', SYM_CR, SYM_LF, \
-		   'Mne sosal Stepa Gizunov', SYM_CR, SYM_LF,\
+Symbols db '+-+|.|+-+'
+String db 	'Sweat February 14th Valentine!', SYM_CR, \
+		   'Ded lox hihihi', SYM_CR, \
+		   'Mne sosal Stepa Gizunov', SYM_CR, \
 		   'Masik kupi mne mashinku!!!', SYM_HEART, SYM_CR, \
 		   0h
-StringSizes: 
+StringSizes:
+
 end Start
