@@ -15,7 +15,7 @@ DEBUG_OFFSET		equ 880
 VIDEOSEG 			equ 0b800h
 WC_WIDTH			equ 80
 WC_HEIGHT			equ 25
-GC_RAMKA_GAP		equ 10
+GC_RAMKA_GAP		equ 4
 VC_RAMKA_GAP		equ 2
 
 ;Symbols
@@ -91,7 +91,8 @@ qqEndDidSwap:
 ;Entry: 	ES:DI = Start text
 ;Exit: 		AH = max count symbols in text line
 ;			AL = count text line
-;Destroy: 	DI, CL, DX
+;			fill string_sizes
+;Destroy: 	DI, CX, DX, BX
 ;---------------------------------------------
 CountTextSizes	proc
 
@@ -110,16 +111,20 @@ qqCycle:
 	mov cl, WC_WIDTH 	; set counter
 	repne scasb			; while(es:[di++] != al && cl != 0) 
 
-	mov dl, WC_WIDTH	; dl = WC_WIDTH - cl
+	mov dl, WC_WIDTH - 1; dl = WC_WIDTH - cl
 	sub dl, cl
+
+;;; string_sizes[ah-1] = dl
+	mov bl, ah 
+	add bx, offset StringSizes
+
 	call MinMax 		; dh max= dl
 
 	cmp byte ptr [di], SYM_LF
 je qqCycle
+
 	mov al, dh
-
-	xchg ah, al
-
+	xchg ah, al ;\\TODO - FIXME
 	ret
 endp
 
@@ -335,9 +340,10 @@ endp
 ;===================DATA======================
 .data
 Vsymbols db '+-+|.|+-+'
-Vstring db 'Sweat February 14th Valentine!', SYM_CR, SYM_LF, \
+Vstring db 	'Sweat February 14th Valentine!', SYM_CR, SYM_LF, \
 		   'Ded lox hihihi', SYM_CR, SYM_LF, \
 		   'Mne sosal Stepa Gizunov', SYM_CR, SYM_LF,\
 		   'Masik kupi mne mashinku!!!', SYM_HEART, SYM_CR, \
 		   0h
+StringSizes: 
 end Start

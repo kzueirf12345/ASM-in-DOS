@@ -1,4 +1,4 @@
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 1
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 1
 ramka.asm
 
 
@@ -20,7 +20,7 @@ ramka.asm
      15	      =B800		     VIDEOSEG			     equ 0b800h
      16	      =0050		     WC_WIDTH			     equ 80
      17	      =0019		     WC_HEIGHT			     equ 25
-     18	      =000A		     GC_RAMKA_GAP	     equ 10
+     18	      =0004		     GC_RAMKA_GAP	     equ 4
      19	      =0002		     VC_RAMKA_GAP	     equ 2
      20
      21				     ;Symbols
@@ -51,16 +51,16 @@ ramka.asm
      46
      47				     ;;; dh = |ah-al|, dl = min(ah, al)
      48	010B  8B D0			     mov dx, ax
-     49	010D  80 C6 14			     add dh, GC_RAMKA_GAP*2
+     49	010D  80 C6 08			     add dh, GC_RAMKA_GAP*2
      50	0110  80 C2 04			     add dl, VC_RAMKA_GAP*2
-     51	0113  E8 0100			     call MinMax
+     51	0113  E8 0106			     call MinMax
      52	0116  2A F2			     sub dh, dl
      53
      54				     ;;; Save text sizes
      55	0118  50			     push ax
      56
      57				     ;;; Set start ramka sizes in ah, al (min =	0)
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 2
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 2
 ramka.asm
 
 
@@ -76,33 +76,33 @@ ramka.asm
      66	0128			     qqEndDidSwap:
      67
      68	0128  BF 0000r			     mov di, offset Vsymbols
-     69
-     70	012B  E8 0032			     call ZoomRamka
-     71
-     72	012E  E8 00A2			     call RamkaOffset
-     73
-     74				     ;;; Save text sizes
-     75	0131  58			     pop ax
-     76
-     77	0132  53			     push bx
-     78	0133  BF 0000r			     mov di, offset Vsymbols
-     79	0136  E8 0049			     call PrintRamkaWithGap
-     80	0139  5B			     pop bx
-     81
-     82	013A  BF 0009r			     mov di, offset Vstring
-     83	013D  E8 00AE			     call PrintText
-     84
-     85	0140  B8 4C00			     mov ax, 4c00h; end	programm
-     86	0143  CD 21			     int 21h
-     87
-     88				     ;=====================FUNCS===================
-     89
-     90				     ;---------------------------------------------
-     91				     ;Descript:	     Count sizes of text with 0	in end
-     92				     ;Entry:	     ES:DI = Start text
-     93				     ;Exit:	     AH	= max count symbols in text line
-     94				     ;			     AL	= count	text line
-     95				     ;Destroy:	     DI, CL, DX
+     69	012B  E8 0038			     call ZoomRamka
+     70
+     71	012E  E8 00A8			     call RamkaOffset
+     72
+     73				     ;;; Save text sizes
+     74	0131  58			     pop ax
+     75
+     76	0132  53			     push bx
+     77	0133  BF 0000r			     mov di, offset Vsymbols
+     78	0136  E8 004F			     call PrintRamkaWithGap
+     79	0139  5B			     pop bx
+     80
+     81	013A  BF 0009r			     mov di, offset Vstring
+     82	013D  E8 00B4			     call PrintText
+     83
+     84	0140  B8 4C00			     mov ax, 4c00h; end	programm
+     85	0143  CD 21			     int 21h
+     86
+     87				     ;=====================FUNCS===================
+     88
+     89				     ;---------------------------------------------
+     90				     ;Descript:	     Count sizes of text with 0	in end
+     91				     ;Entry:	     ES:DI = Start text
+     92				     ;Exit:	     AH	= max count symbols in text line
+     93				     ;			     AL	= count	text line
+     94				     ;			     fill string_sizes
+     95				     ;Destroy:	     DI, CX, DX, BX
      96				     ;---------------------------------------------
      97	0145			     CountTextSizes  proc
      98
@@ -121,274 +121,279 @@ ramka.asm
     111	014B  B1 50			     mov cl, WC_WIDTH	     ; set counter
     112	014D  F2> AE			     repne scasb		     ; while(es:[di++] != al &&	cl != 0)
     113
-    114	014F  B2 50			     mov dl, WC_WIDTH	     ; dl = WC_WIDTH - cl
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 3
+    114	014F  B2 4F			     mov dl, WC_WIDTH -	1; dl =	WC_WIDTH - cl
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 3
 ramka.asm
 
 
 
     115	0151  2A D1			     sub dl, cl
-    116	0153  E8 00C0			     call MinMax	     ; dh max= dl
-    117
-    118	0156  80 3D 0A			     cmp byte ptr [di],	SYM_LF
-    119	0159  74 EE		     je	qqCycle
-    120	015B  8A C6			     mov al, dh
-    121
-    122	015D  86 E0			     xchg ah, al
-    123
-    124	015F  C3			     ret
-    125	0160			     endp
-    126
-    127				     ;---------------------------------------------
-    128				     ;Descript:	     print small versions ramka	without	text up	to the present size
-    129				     ;Entry:	     DI	= nine ramka's symbols
-    130				     ;			     AH	= count	updrages
-    131				     ;			     AL	= start	larger side size
-    132				     ;REMARK:	     If	vertical size >	gorizontal size	=> swap	ah and al
-    133				     ;			     DL	= end max side size
-    134				     ;Exit:	     None
-    135				     ;Destroy:	     AX	BX CX DX DI
-    136				     ;---------------------------------------------
-    137	0160			     ZoomRamka	     proc
-    138
-    139	0160  32 F6			     xor dh, dh				     ; counter = 0
-    140	0162			     qqCycle:
-    141	0162  50			     push ax
-    142	0163  52			     push dx
-    143	0164  57			     push di
-    144
-    145	0165  E8 006B			     call RamkaOffset
-    146	0168  E8 0020			     call PrintRamka
-    147
-    148				     ;;; Pause
-    149	016B  B4 86			     mov ah, 86h
-    150	016D  B9 0001			     mov cx, HUNDRED_MSECONDS1
-    151					     ; xor cx, cx
-    152	0170  BA 86A0			     mov dx, HUNDRED_MSECONDS2
-    153	0173  CD 15			     int 15h
-    154
-    155	0175  5F			     pop di
-    156	0176  5A			     pop dx
-    157	0177  58			     pop ax
+    116
+    117				     ;;; string_sizes[ah-1] = dl
+    118	0153  8A DC			     mov bl, ah
+    119	0155  81 C3 006Fr		     add bx, offset StringSizes
+    120
+    121	0159  E8 00C0			     call MinMax	     ; dh max= dl
+    122
+    123	015C  80 3D 0A			     cmp byte ptr [di],	SYM_LF
+    124	015F  74 E8		     je	qqCycle
+    125
+    126	0161  8A C6			     mov al, dh
+    127	0163  86 E0			     xchg ah, al ;\\TODO - FIXME
+    128	0165  C3			     ret
+    129	0166			     endp
+    130
+    131				     ;---------------------------------------------
+    132				     ;Descript:	     print small versions ramka	without	text up	to the present size
+    133				     ;Entry:	     DI	= nine ramka's symbols
+    134				     ;			     AH	= count	updrages
+    135				     ;			     AL	= start	larger side size
+    136				     ;REMARK:	     If	vertical size >	gorizontal size	=> swap	ah and al
+    137				     ;			     DL	= end max side size
+    138				     ;Exit:	     None
+    139				     ;Destroy:	     AX	BX CX DX DI
+    140				     ;---------------------------------------------
+    141	0166			     ZoomRamka	     proc
+    142
+    143	0166  32 F6			     xor dh, dh				     ; counter = 0
+    144	0168			     qqCycle:
+    145	0168  50			     push ax
+    146	0169  52			     push dx
+    147	016A  57			     push di
+    148
+    149	016B  E8 006B			     call RamkaOffset
+    150	016E  E8 0020			     call PrintRamka
+    151
+    152				     ;;; Pause
+    153	0171  B4 86			     mov ah, 86h
+    154	0173  B9 0001			     mov cx, HUNDRED_MSECONDS1
+    155					     ; xor cx, cx
+    156	0176  BA 86A0			     mov dx, HUNDRED_MSECONDS2
+    157	0179  CD 15			     int 15h
     158
-    159	0178  05 0101			     add ax, 101h		     ; ++al, ++ah
-    160	017B  FE C6			     inc dh
-    161	017D  3A F2			     cmp dh, dl
-    162	017F  75 E1		     jne qqCycle
-    163
-    164	0181  C3			     ret
-    165	0182			     endp
-    166
-    167				     ;---------------------------------------------
-    168				     ;Descript:	     Print ramka with gap
-    169				     ;Entry:	     AH	= max count symbols in text line
-    170				     ;			     AL	= count	\n text
-    171				     ;			     BX	= ramka	offset
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 4
+    159	017B  5F			     pop di
+    160	017C  5A			     pop dx
+    161	017D  58			     pop ax
+    162
+    163	017E  05 0101			     add ax, 101h		     ; ++al, ++ah
+    164	0181  FE C6			     inc dh
+    165	0183  3A F2			     cmp dh, dl
+    166	0185  75 E1		     jne qqCycle
+    167
+    168	0187  C3			     ret
+    169	0188			     endp
+    170
+    171				     ;---------------------------------------------
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 4
 ramka.asm
 
 
 
-    172				     ;			     DI	= Start	nine char's types
-    173				     ;			     ES	= Num segment
-    174				     ;Exit:	     None
-    175				     ;Destroy:	     CX	AX BX DI
-    176				     ;---------------------------------------------
-    177	0182			     PrintRamkaWithGap	     proc
-    178	0182  80 C4 14			     add ah, 2*GC_RAMKA_GAP ; set count	non repeat symbols
-    179	0185  04 05			     add al, 2*VC_RAMKA_GAP + 1
-    180
-    181	0187  E8 0001			     call PrintRamka
-    182
-    183	018A  C3			     ret
-    184	018B			     endp
-    185
-    186				     ;---------------------------------------------
-    187				     ;Descript:	     Print ramka
-    188				     ;Entry:	     AH	= width	- 2
-    189				     ;			     AL	= height - 2
-    190				     ;			     BX	= ramka	offset
-    191				     ;			     DI	= Start	nine char's types
-    192				     ;			     ES	= Num segment
-    193				     ;Exit:	     None
-    194				     ;Destroy:	     CX	AL BX DI
-    195				     ;---------------------------------------------
-    196	018B			     PrintRamka	     proc
-    197
-    198	018B  53			     push bx
-    199	018C  E8 0022			     call PrintLine
-    200	018F  5B			     pop bx
+    172				     ;Descript:	     Print ramka with gap
+    173				     ;Entry:	     AH	= max count symbols in text line
+    174				     ;			     AL	= count	\n text
+    175				     ;			     BX	= ramka	offset
+    176				     ;			     DI	= Start	nine char's types
+    177				     ;			     ES	= Num segment
+    178				     ;Exit:	     None
+    179				     ;Destroy:	     CX	AX BX DI
+    180				     ;---------------------------------------------
+    181	0188			     PrintRamkaWithGap	     proc
+    182	0188  80 C4 08			     add ah, 2*GC_RAMKA_GAP ; set count	non repeat symbols
+    183	018B  04 05			     add al, 2*VC_RAMKA_GAP + 1
+    184
+    185	018D  E8 0001			     call PrintRamka
+    186
+    187	0190  C3			     ret
+    188	0191			     endp
+    189
+    190				     ;---------------------------------------------
+    191				     ;Descript:	     Print ramka
+    192				     ;Entry:	     AH	= width	- 2
+    193				     ;			     AL	= height - 2
+    194				     ;			     BX	= ramka	offset
+    195				     ;			     DI	= Start	nine char's types
+    196				     ;			     ES	= Num segment
+    197				     ;Exit:	     None
+    198				     ;Destroy:	     CX	AL BX DI
+    199				     ;---------------------------------------------
+    200	0191			     PrintRamka	     proc
     201
-    202	0190  83 C7 03			     add di, 3 ; next triple symbols
-    203	0193  84 C0			     test al, al
-    204	0195  74 0F		     je	qqCycleEnd
-    205	0197			     qqCycle:
-    206	0197  81 C3 00A0		     add bx, WC_WIDTH*2	; next line
-    207	019B  53			     push bx
-    208	019C  E8 0012			     call PrintLine
-    209	019F  5B			     pop bx
-    210
-    211	01A0  FE C8			     dec al
-    212	01A2  84 C0			     test al, al
-    213	01A4  75 F1		     jne qqCycle
-    214	01A6			     qqCycleEnd:
-    215
-    216	01A6  83 C7 03			     add di, 3 ; next triple symbols
-    217	01A9  81 C3 00A0		     add bx, WC_WIDTH*2	; next line
-    218	01AD  E8 0001			     call PrintLine
+    202	0191  53			     push bx
+    203	0192  E8 0022			     call PrintLine
+    204	0195  5B			     pop bx
+    205
+    206	0196  83 C7 03			     add di, 3 ; next triple symbols
+    207	0199  84 C0			     test al, al
+    208	019B  74 0F		     je	qqCycleEnd
+    209	019D			     qqCycle:
+    210	019D  81 C3 00A0		     add bx, WC_WIDTH*2	; next line
+    211	01A1  53			     push bx
+    212	01A2  E8 0012			     call PrintLine
+    213	01A5  5B			     pop bx
+    214
+    215	01A6  FE C8			     dec al
+    216	01A8  84 C0			     test al, al
+    217	01AA  75 F1		     jne qqCycle
+    218	01AC			     qqCycleEnd:
     219
-    220	01B0  C3			     ret
-    221	01B1			     endp
-    222
-    223				     ;---------------------------------------------
-    224				     ;Descript:	     Print line
-    225				     ;Entry:	     AH	= count	non repeat symbols
-    226				     ;			     BX	= Offset in segment for	start print
-    227				     ;			     DI	= Start	three char's types
-    228				     ;			     ES	= Num segment
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 5
+    220	01AC  83 C7 03			     add di, 3 ; next triple symbols
+    221	01AF  81 C3 00A0		     add bx, WC_WIDTH*2	; next line
+    222	01B3  E8 0001			     call PrintLine
+    223
+    224	01B6  C3			     ret
+    225	01B7			     endp
+    226
+    227				     ;---------------------------------------------
+    228				     ;Descript:	     Print line
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 5
 ramka.asm
 
 
 
-    229				     ;Exit:	     None
-    230				     ;Destroy:	     CX	BX
-    231				     ;---------------------------------------------
-    232	01B1			     PrintLine	     proc
-    233	01B1  8A 0D			     mov cl, byte ptr [di]
-    234	01B3  26: 88 0F			     mov es:[bx], cl ; puts(di[0])
-    235
-    236	01B6  8A EC			     mov ch, ah	; for cycle
-    237	01B8  0A ED			     or	ch, ch
-    238	01BA  74 0F		     je	qqCycleEnd
-    239	01BC			     qqCycle:
-    240	01BC  83 C3 02			     add bx, 2
-    241	01BF  8A 4D 01			     mov cl, byte ptr [di+1]
-    242	01C2  26: 88 0F			     mov es:[bx], cl ; puts(di[0])
-    243
-    244	01C5  FE CD			     dec ch
-    245	01C7  0A ED			     or	ch, ch
-    246	01C9  75 F1		     jne qqCycle
-    247	01CB			     qqCycleEnd:
-    248
-    249	01CB  8A 4D 02			     mov cl, byte ptr [di+2]
-    250	01CE  26: 88 4F	02		     mov es:[bx+2], cl ; puts(di[0])
-    251	01D2  C3			     ret
-    252	01D3			     endp
-    253
-    254				     ;---------------------------------------------
-    255				     ;Descript:	     Calculate ramka's offset
-    256				     ;Entry:	     AH	= width
-    257				     ;			     AL	= height
-    258				     ;Exit:	     BX	= ramka's offset
-    259				     ;Destroy:	     CX
-    260				     ;---------------------------------------------
-    261	01D3			     RamkaOffset     proc
-    262
-    263					     ; mov bx, WC_WIDTH	- (2*GC_RAMKA_GAP + 2) ;calculate gorizontal offset
-    264	01D3  BB 0050			     mov bx, WC_WIDTH ;calculate gorizontal offset
-    265	01D6  8A CC			     mov cl, ah
-    266	01D8  32 ED			     xor ch, ch
-    267	01DA  2B D9			     sub bx, cx
-    268	01DC  81 E3 00FE		     and bx, 11111110b ; for chet
-    269
-    270					     ; mov cl, WC_HEIGHT - (2*VC_RAMKA_GAP + 2 + 1) + 3	;calculate vertical offset
-    271	01E0  B1 19			     mov cl, WC_HEIGHT ;calculate vertical offset
-    272	01E2  2A C8			     sub cl, al
-    273	01E4  81 E1 00FE		     and cx, 11111110b ; for chet
-    274	01E8  6B C9 50			     imul cx, WC_WIDTH
-    275
-    276	01EB  03 D9			     add bx, cx
-    277
-    278	01ED  C3			     ret
-    279	01EE			     endp
-    280
-    281				     ;---------------------------------------------
-    282				     ;Descript:	     print text	with 0 in end
-    283				     ;Entry:	     BX	= ramka	offset
-    284				     ;			     DI	= Start	text
-    285				     ;Exit:	     None
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 6
+    229				     ;Entry:	     AH	= count	non repeat symbols
+    230				     ;			     BX	= Offset in segment for	start print
+    231				     ;			     DI	= Start	three char's types
+    232				     ;			     ES	= Num segment
+    233				     ;Exit:	     None
+    234				     ;Destroy:	     CX	BX
+    235				     ;---------------------------------------------
+    236	01B7			     PrintLine	     proc
+    237	01B7  8A 0D			     mov cl, byte ptr [di]
+    238	01B9  26: 88 0F			     mov es:[bx], cl ; puts(di[0])
+    239
+    240	01BC  8A EC			     mov ch, ah	; for cycle
+    241	01BE  0A ED			     or	ch, ch
+    242	01C0  74 0F		     je	qqCycleEnd
+    243	01C2			     qqCycle:
+    244	01C2  83 C3 02			     add bx, 2
+    245	01C5  8A 4D 01			     mov cl, byte ptr [di+1]
+    246	01C8  26: 88 0F			     mov es:[bx], cl ; puts(di[0])
+    247
+    248	01CB  FE CD			     dec ch
+    249	01CD  0A ED			     or	ch, ch
+    250	01CF  75 F1		     jne qqCycle
+    251	01D1			     qqCycleEnd:
+    252
+    253	01D1  8A 4D 02			     mov cl, byte ptr [di+2]
+    254	01D4  26: 88 4F	02		     mov es:[bx+2], cl ; puts(di[0])
+    255	01D8  C3			     ret
+    256	01D9			     endp
+    257
+    258				     ;---------------------------------------------
+    259				     ;Descript:	     Calculate ramka's offset
+    260				     ;Entry:	     AH	= width
+    261				     ;			     AL	= height
+    262				     ;Exit:	     BX	= ramka's offset
+    263				     ;Destroy:	     CX
+    264				     ;---------------------------------------------
+    265	01D9			     RamkaOffset     proc
+    266
+    267					     ; mov bx, WC_WIDTH	- (2*GC_RAMKA_GAP + 2) ;calculate gorizontal offset
+    268	01D9  BB 0050			     mov bx, WC_WIDTH ;calculate gorizontal offset
+    269	01DC  8A CC			     mov cl, ah
+    270	01DE  32 ED			     xor ch, ch
+    271	01E0  2B D9			     sub bx, cx
+    272	01E2  81 E3 00FE		     and bx, 11111110b ; for chet
+    273
+    274					     ; mov cl, WC_HEIGHT - (2*VC_RAMKA_GAP + 2 + 1) + 3	;calculate vertical offset
+    275	01E6  B1 19			     mov cl, WC_HEIGHT ;calculate vertical offset
+    276	01E8  2A C8			     sub cl, al
+    277	01EA  81 E1 00FE		     and cx, 11111110b ; for chet
+    278	01EE  6B C9 50			     imul cx, WC_WIDTH
+    279
+    280	01F1  03 D9			     add bx, cx
+    281
+    282	01F3  C3			     ret
+    283	01F4			     endp
+    284
+    285				     ;---------------------------------------------
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 6
 ramka.asm
 
 
 
-    286				     ;Destroy:	     DI, BX, CH, AX
-    287				     ;---------------------------------------------
-    288	01EE			     PrintText	     proc
-    289	01EE  81 C3 01F6		     add bx, (VC_RAMKA_GAP + 1)*WC_WIDTH*2 + (GC_RAMKA_GAP+1)*2; add padding in	ramka
-    290
-    291	01F2  8B C3			     mov ax, bx
-    292
-    293	01F4			     qqCycle:
-    294	01F4  8A 2D			     mov ch, byte ptr [di] ; remember
-    295	01F6  84 ED			     test ch, ch ; check end
-    296	01F8  74 1B		     je	qqCycleEnd
-    297	01FA  80 FD 0D			     cmp ch, SYM_CR
-    298	01FD  75 0D		     jne qqNoNewLine
-    299	01FF  83 C7 02			     add di, 2 ; skip LF
-    300
-    301	0202  8B D8			     mov bx, ax
-    302	0204  81 C3 00A0		     add bx, WC_WIDTH*2	; next print line
-    303	0208  8B C3			     mov ax, bx
-    304	020A  EB E8		     jmp qqCycle
-    305	020C			     qqNoNewLine:
-    306	020C  26: 88 2F			     mov es:[bx], ch ; puts(*di)
-    307
-    308	020F  83 C3 02			     add bx, 2
-    309	0212  47			     inc di ; next symbol
-    310	0213  EB DF		     jmp qqCycle
-    311	0215			     qqCycleEnd:
-    312
-    313	0215  C3			     ret
-    314	0216			     endp
-    315
-    316				     ;---------------------------------------------
-    317				     ;Descript:	     Get Min
-    318				     ;Entry:	     DL	= First
-    319				     ;			     DH	= Second
-    320				     ;Exit:	     DH	= MAX
-    321				     ;			     DL	= MIN
-    322				     ;Destroy:	     CH
-    323				     ;---------------------------------------------
-    324	0216			     MinMax  proc
-    325	0216  3A D6			     cmp dl, dh
-    326
-    327	0218  7E 06		     jle qqSkipSwap
-    328	021A  8A EA			     mov ch, dl
-    329	021C  8A D6			     mov dl, dh
-    330	021E  8A F5			     mov dh, ch
-    331	0220			     qqSkipSwap:
-    332
-    333	0220  C3			     ret
-    334	0221			     endp
-    335
-    336				     ;===================DATA======================
-    337	0221			     .data
-    338	0000  2B 2D 2B 7C 2E 7C	2B+  Vsymbols db '+-+|.|+-+'
-    339	      2D 2B
-    340	0009  53 77 65 61 74 20	46+  Vstring db	'Sweat February	14th Valentine!', SYM_CR, SYM_LF, \
-    341	      65 62 72 75 61 72	79+			'Ded lox hihihi', SYM_CR, SYM_LF, \
-    342	      20 31 34 74 68 20	56+			'Mne sosal Stepa Gizunov', SYM_CR, SYM_LF,\
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 7
+    286				     ;Descript:	     print text	with 0 in end
+    287				     ;Entry:	     BX	= ramka	offset
+    288				     ;			     DI	= Start	text
+    289				     ;Exit:	     None
+    290				     ;Destroy:	     DI, BX, CH, AX
+    291				     ;---------------------------------------------
+    292	01F4			     PrintText	     proc
+    293	01F4  81 C3 01EA		     add bx, (VC_RAMKA_GAP + 1)*WC_WIDTH*2 + (GC_RAMKA_GAP+1)*2; add padding in	ramka
+    294
+    295	01F8  8B C3			     mov ax, bx
+    296
+    297	01FA			     qqCycle:
+    298	01FA  8A 2D			     mov ch, byte ptr [di] ; remember
+    299	01FC  84 ED			     test ch, ch ; check end
+    300	01FE  74 1B		     je	qqCycleEnd
+    301	0200  80 FD 0D			     cmp ch, SYM_CR
+    302	0203  75 0D		     jne qqNoNewLine
+    303	0205  83 C7 02			     add di, 2 ; skip LF
+    304
+    305	0208  8B D8			     mov bx, ax
+    306	020A  81 C3 00A0		     add bx, WC_WIDTH*2	; next print line
+    307	020E  8B C3			     mov ax, bx
+    308	0210  EB E8		     jmp qqCycle
+    309	0212			     qqNoNewLine:
+    310	0212  26: 88 2F			     mov es:[bx], ch ; puts(*di)
+    311
+    312	0215  83 C3 02			     add bx, 2
+    313	0218  47			     inc di ; next symbol
+    314	0219  EB DF		     jmp qqCycle
+    315	021B			     qqCycleEnd:
+    316
+    317	021B  C3			     ret
+    318	021C			     endp
+    319
+    320				     ;---------------------------------------------
+    321				     ;Descript:	     Get Min
+    322				     ;Entry:	     DL	= First
+    323				     ;			     DH	= Second
+    324				     ;Exit:	     DH	= MAX
+    325				     ;			     DL	= MIN
+    326				     ;Destroy:	     CH
+    327				     ;---------------------------------------------
+    328	021C			     MinMax  proc
+    329	021C  3A D6			     cmp dl, dh
+    330
+    331	021E  7E 06		     jle qqSkipSwap
+    332	0220  8A EA			     mov ch, dl
+    333	0222  8A D6			     mov dl, dh
+    334	0224  8A F5			     mov dh, ch
+    335	0226			     qqSkipSwap:
+    336
+    337	0226  C3			     ret
+    338	0227			     endp
+    339
+    340				     ;===================DATA======================
+    341	0227			     .data
+    342	0000  2B 2D 2B 7C 2E 7C	2B+  Vsymbols db '+-+|.|+-+'
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 7
 ramka.asm
 
 
 
-    343	      61 6C 65 6E 74 69	6E+			'Masik kupi mne	mashinku!!!', SYM_HEART, SYM_CR, \
-    344	      65 21 0D 0A 44 65	64+			0h
-    345	      20 6C 6F 78 20 68	69+
-    346	      68 69 68 69 0D 0A	4D+
-    347	      6E 65 20 73 6F 73	61+
-    348	      6C 20 53 74 65 70	61+
-    349	      20 47 69 7A 75 6E	6F+
-    350	      76 0D 0A 4D 61 73	69+
-    351	      6B 20 6B 75 70 69	20+
-    352	      6D 6E 65 20 6D 61	73+
-    353	      68 69 6E 6B 75 21	21+
-    354	      21 03 0D 00
-    355				     end Start
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 8
+    343	      2D 2B
+    344	0009  53 77 65 61 74 20	46+  Vstring db	     'Sweat February 14th Valentine!', SYM_CR, SYM_LF, \
+    345	      65 62 72 75 61 72	79+			'Ded lox hihihi', SYM_CR, SYM_LF, \
+    346	      20 31 34 74 68 20	56+			'Mne sosal Stepa Gizunov', SYM_CR, SYM_LF,\
+    347	      61 6C 65 6E 74 69	6E+			'Masik kupi mne	mashinku!!!', SYM_HEART, SYM_CR, \
+    348	      65 21 0D 0A 44 65	64+			0h
+    349	      20 6C 6F 78 20 68	69+
+    350	      68 69 68 69 0D 0A	4D+
+    351	      6E 65 20 73 6F 73	61+
+    352	      6C 20 53 74 65 70	61+
+    353	      20 47 69 7A 75 6E	6F+
+    354	      76 0D 0A 4D 61 73	69+
+    355	      6B 20 6B 75 70 69	20+
+    356	      6D 6E 65 20 6D 61	73+
+    357	      68 69 6E 6B 75 21	21+
+    358	      21 03 0D 00
+    359	006F			     StringSizes:
+    360				     end Start
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 8
 Symbol Table
 
 
@@ -396,9 +401,9 @@ Symbol Table
 
 Symbol Name			  Type	 Value
 
-??DATE				  Text	 "13/02/25"
+??DATE				  Text	 "16/02/25"
 ??FILENAME			  Text	 "ramka	  "
-??TIME				  Text	 "08:41:37"
+??TIME				  Text	 "15:08:52"
 ??VERSION			  Number 040A
 @32BIT				  Text	 0
 @CODE				  Text	 DGROUP
@@ -414,30 +419,31 @@ Symbol Name			  Type	 Value
 @WORDSIZE			  Text	 2
 COUNTTEXTSIZES			  Near	 DGROUP:0145
 DEBUG_OFFSET			  Number 0370
-GC_RAMKA_GAP			  Number 000A
+GC_RAMKA_GAP			  Number 0004
 HUNDRED_MSECONDS1		  Number 0001
 HUNDRED_MSECONDS2		  Number 86A0
-MINMAX				  Near	 DGROUP:0216
+MINMAX				  Near	 DGROUP:021C
 ONE_SECONDS1			  Number 000F
 ONE_SECONDS2			  Number 4240
-PRINTLINE			  Near	 DGROUP:01B1
-PRINTRAMKA			  Near	 DGROUP:018B
-PRINTRAMKAWITHGAP		  Near	 DGROUP:0182
-PRINTTEXT			  Near	 DGROUP:01EE
+PRINTLINE			  Near	 DGROUP:01B7
+PRINTRAMKA			  Near	 DGROUP:0191
+PRINTRAMKAWITHGAP		  Near	 DGROUP:0188
+PRINTTEXT			  Near	 DGROUP:01F4
 QQCYCLE				  Near	 DGROUP:0149
-QQCYCLE				  Near	 DGROUP:0162
-QQCYCLE				  Near	 DGROUP:0197
-QQCYCLE				  Near	 DGROUP:01BC
-QQCYCLE				  Near	 DGROUP:01F4
-QQCYCLEEND			  Near	 DGROUP:01A6
-QQCYCLEEND			  Near	 DGROUP:01CB
-QQCYCLEEND			  Near	 DGROUP:0215
+QQCYCLE				  Near	 DGROUP:0168
+QQCYCLE				  Near	 DGROUP:019D
+QQCYCLE				  Near	 DGROUP:01C2
+QQCYCLE				  Near	 DGROUP:01FA
+QQCYCLEEND			  Near	 DGROUP:01AC
+QQCYCLEEND			  Near	 DGROUP:01D1
+QQCYCLEEND			  Near	 DGROUP:021B
 QQDIDSWAP			  Near	 DGROUP:0124
 QQENDDIDSWAP			  Near	 DGROUP:0128
-QQNONEWLINE			  Near	 DGROUP:020C
-QQSKIPSWAP			  Near	 DGROUP:0220
-RAMKAOFFSET			  Near	 DGROUP:01D3
+QQNONEWLINE			  Near	 DGROUP:0212
+QQSKIPSWAP			  Near	 DGROUP:0226
+RAMKAOFFSET			  Near	 DGROUP:01D9
 START				  Near	 DGROUP:0100
+STRINGSIZES			  Near	 DGROUP:006F
 SYM_CR				  Number 000D
 SYM_HEART			  Number 0003
 SYM_LF				  Number 000A
@@ -449,17 +455,17 @@ VIDEOSEG			  Number B800
 VSTRING				  Byte	 DGROUP:0009
 VSYMBOLS			  Byte	 DGROUP:0000
 WC_HEIGHT			  Number 0019
-WC_WIDTH			  Number 0050
-Turbo Assembler	 Version 4.1	    13/02/25 08:41:37	    Page 9
+Turbo Assembler	 Version 4.1	    16/02/25 15:08:52	    Page 9
 Symbol Table
 
 
 
-ZOOMRAMKA			  Near	 DGROUP:0160
+WC_WIDTH			  Number 0050
+ZOOMRAMKA			  Near	 DGROUP:0166
 
 Groups & Segments		  Bit Size Align  Combine Class
 
 DGROUP				  Group
   _DATA				  16  006F Word	  Public  DATA
-  _TEXT				  16  0221 Word	  Public  CODE
+  _TEXT				  16  0227 Word	  Public  CODE
 
