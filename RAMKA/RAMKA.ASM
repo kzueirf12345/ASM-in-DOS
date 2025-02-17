@@ -33,7 +33,7 @@ VC_RAMKA_GAP		equ 2
 
 ;Symbols
 SYM_LF				equ 0ah
-SYM_CR				equ 0dh
+SYM_CR				equ '\'
 SYM_HEART			equ 03h
 
 ;Times
@@ -45,19 +45,25 @@ HUNDRED_MSECONDS1	equ 1h
 HUNDRED_MSECONDS2	equ 86A0h
 TEN_MSECONDS		equ 2710h
 
+;Options
+ARGS_ADDR           equ 80h
+
 ;=======================MAIN======================
 
 Start:
+    call GetOpt
+
+    push ax                 ; save color
     mov di, offset String
     call CountTextSizes
-
     mov cx, dx
+
     add cx, (2*GC_RAMKA_GAP) + 2
     add bx, (2*VC_RAMKA_GAP) + 2
     mov ax, VIDEOSEG
 	mov es, ax
     mov si, offset Symbols
-    mov ah, 01101110b
+    pop ax                  ; save color
 
     push cx
     push bx
@@ -67,37 +73,108 @@ Start:
 
     call CountRamkaOffset
 
-
-    ; mov cx, dx
-    ; add bx, (2*VC_RAMKA_GAP)
-    ; add cx, (2*GC_RAMKA_GAP)
-    ; add bx, 2               ; borders
-    ; add cx, 2               ; borders
-    ; call CountRamkaOffset
-
-    ; dec bx
-    ; mov ax, VIDEOSEG
-	; mov es, ax
-    ; mov si, offset Symbols
-    ; mov ah, 01101110b
-
-    ; push cx
-    ; push di
-    ; call PrintRamka
-    ; pop di
-    ; pop cx
-
     add di, (1+VC_RAMKA_GAP)*WC_WIDTH*2 ; border + gap
     mov si, offset String
     mov bx, offset StringSizes
 
     call PrintText
 
-
     mov ax, 4c00h           ; end programm
 	int 21h
 
 ;=======================FUNCS======================
+;---------------------------------------------
+;Descript: 	color style[1-6] ?+-+|.|+-+ message
+;Entry: 	None
+;Exit: 		AH = color
+;           SI = symbols for ramka  (fill Symbols)
+;           DI = string             (fill String)
+;Destroy: 	
+;---------------------------------------------
+GetOpt proc
+;;; set default
+    mov ah, 00001111b
+
+;;; set bx and dl
+    mov bx, ARGS_ADDR
+    mov dl, byte ptr [bx]
+    test dl, dl
+je qqExit
+    dec dl
+    add bx, 2
+
+;;; set color
+    mov ah, byte ptr [bx]
+    sub dl, 2
+    test dl, dl
+je qqExit
+    add bx, 2
+
+;;; set style
+    mov dh, byte ptr [bx]
+    sub dh, '0'
+    cmp dh, 1
+je qqStyle1
+    cmp dh, 2
+je qqStyle2
+    cmp dh, 3
+je qqStyle3
+    cmp dh, 4
+je qqStyle4
+    cmp dh, 5
+je qqStyle5
+    cmp dh, 6
+je qqStyle6
+qqStyleEnd:
+    mov di, offset Symbols  ; dest movsb
+    mov cx, 9               ; count symbols
+    rep movsb
+    sub dl, 2
+    test dl, dl
+je qqExit
+    add bx, 2
+
+;;; set string
+    mov cl, dl              ; count symbols in string
+    mov si, bx              ; source movsb
+    mov di, offset String   ; dest movsb
+    rep movsb
+jmp qqExit
+
+qqExit:
+    mov si, offset Symbols
+    mov di, offset String
+    ret
+
+
+qqStyle1:
+    mov si, offset Symbols1
+jmp qqStyleEnd
+
+qqStyle2:
+    mov si, offset Symbols2
+jmp qqStyleEnd
+
+qqStyle3:
+    mov si, offset Symbols3
+jmp qqStyleEnd
+
+qqStyle4:
+    mov si, offset Symbols4
+jmp qqStyleEnd
+
+qqStyle5:
+    mov si, offset Symbols5
+jmp qqStyleEnd
+
+qqStyle6:
+    sub dl, 9
+    add bx, 2
+    mov si, bx
+    add bx, 9-1             ; minus space
+jmp qqStyleEnd
+
+endp
 
 ;---------------------------------------------
 ;Descript: 	Count sizes of text with 0 in end,
@@ -138,7 +215,7 @@ qqSkipSwap:
     mov word ptr [bx], ax
     pop bx
 
-	cmp byte ptr [di], 0h
+	cmp byte ptr [di], '$'
 jne qqCycle
 
 	ret
@@ -176,8 +253,8 @@ endp
 ;Descript: 	print small versions ramka without 
 ;           text up to the present size
 ;Entry: 	AH = color
-;			CX = final width - 2
-;           BX = final height - 1
+;			CX = final width
+;           BX = final height
 ;           SI = Start nine char's types
 ;           ES = videoseg
 ;Exit: 		None
@@ -303,9 +380,8 @@ PrintLine	proc
 endp
 
 ;---------------------------------------------
-;Descript: 	print text with 0 in end
-;           lines separate with SYM_CR, SYM_LF
-;           last symbol in last line SYM_CR
+;Descript: 	print text with $ in end
+;           lines separate with SYM_CR
 ;Entry: 	DS:SI = text
 ;           DS:BX = string sizes
 ;			ES:DI = RAMKA videoseg start place
@@ -323,7 +399,7 @@ qqCycle:
     add di, WC_WIDTH*2      ; next videoseg line
     add bx, 2               ; next line size
 
-    cmp byte ptr [si], 0h
+    cmp byte ptr [si], '$'
 jne qqCycle
 
 	ret
@@ -360,12 +436,17 @@ jne qqCycle
 endp
 
 .data
-Symbols db '+-+|.|+-+'
+Symbols1 db '+-+| |+-+'
+Symbols2 db '~~~| |~~~'
+Symbols3 db '@*@| |@*@'
+Symbols4 db '///| |///'
+Symbols5 db '%%%| |%%%'
+Symbols  db '000000000'
 String db 	'Sweat February 14th Valentine!', SYM_CR, \
 		   'Ded lox hihihi', SYM_CR, \
 		   'Mne sosal Stepa Gizunov', SYM_CR, \
 		   'Masik kupi mne mashinku!!!', SYM_HEART, SYM_CR, \
-		   0h
+		   '$'
 StringSizes:
 
 end Start
