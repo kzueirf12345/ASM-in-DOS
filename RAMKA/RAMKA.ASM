@@ -84,12 +84,12 @@ Start:
 
 ;=======================FUNCS======================
 ;---------------------------------------------
-;Descript: 	color style[1-6] ?+-+|.|+-+ message
+;Descript: 	[mode(a, b)]color style[1-6] ?+-+|.|+-+ message
 ;Entry: 	None
 ;Exit: 		AH = color
 ;           SI = symbols for ramka  (fill Symbols)
 ;           DI = string             (fill String)
-;Destroy: 	
+;Destroy: 	BX, CX, DX
 ;---------------------------------------------
 GetOpt proc
 ;;; set default
@@ -104,11 +104,26 @@ je qqExit
     add bx, 2
 
 ;;; set color
-    mov ah, byte ptr [bx]
+    cmp byte ptr [bx], '0'    ; setable color
+jne qqColorNothing
+    dec dl
+    inc bx
+    mov dh, byte ptr [bx]   ; mode
+    dec dl
+    inc bx
+    cmp dh, 'a'
+je qqColorA
+    cmp dh, 'b'
+je qqColorB
+    inc dl
+    dec bx
+jmp qqColorNothing
+qqColorEnd:
     sub dl, 2
     test dl, dl
 je qqExit
     add bx, 2
+qqColorNothing:
 
 ;;; set style
     mov dh, byte ptr [bx]
@@ -125,6 +140,7 @@ je qqStyle4
 je qqStyle5
     cmp dh, 6
 je qqStyle6
+jmp qqStyleNoting
 qqStyleEnd:
     mov di, offset Symbols  ; dest movsb
     mov cx, 9               ; count symbols
@@ -133,6 +149,7 @@ qqStyleEnd:
     test dl, dl
 je qqExit
     add bx, 2
+qqStyleNoting:
 
 ;;; set string
     mov cl, dl              ; count symbols in string
@@ -146,6 +163,26 @@ qqExit:
     mov di, offset String
     ret
 
+qqColorA:
+    mov ah, byte ptr [bx]
+jmp qqColorEnd
+
+qqColorB:
+    xor ah, ah
+    mov cx, 8
+qqCycleColorB:
+;;; ah += (dh - '0')<<((--cx)++)
+    mov dh, byte ptr [bx]
+    sub dh, '0'
+    dec cx
+    shl dh, cl
+    inc cx
+    add ah, dh
+
+    inc bx
+loop qqCycleColorB
+    dec bx
+jmp qqColorEnd
 
 qqStyle1:
     mov si, offset Symbols1
