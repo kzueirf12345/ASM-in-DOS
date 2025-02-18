@@ -153,7 +153,6 @@ dw offset qqStyle3
 dw offset qqStyle4
 dw offset qqStyle5
 dw offset qqStyle6
-;;; if 0 and >6
 
 qqStyleEnd:
     mov di, offset Symbols  ; dest movsb
