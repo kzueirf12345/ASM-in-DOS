@@ -84,7 +84,7 @@ Start:
 
 ;=======================FUNCS======================
 ;---------------------------------------------
-;Descript: 	[mode(a, b)]color style[1-6] ?+-+|.|+-+ message
+;Descript: 	[mode(a, b)]color style[1-6] 6?+-+|.|+-+ message
 ;Entry: 	None
 ;Exit: 		AH = color
 ;           SI = symbols for ramka  (fill Symbols)
@@ -96,8 +96,8 @@ GetOpt proc
     mov ah, 00001111b
 
 ;;; set bx and dl
-    mov bx, ARGS_ADDR
-    mov dl, byte ptr [bx]
+    mov bx, ARGS_ADDR                         ; bx - str addr
+    mov dl, byte ptr [bx]                     ; dl - counter
     test dl, dl
 je qqExit
     dec dl
@@ -111,43 +111,58 @@ jne qqColorNothing
     mov dh, byte ptr [bx]   ; mode
     dec dl
     inc bx
+
     cmp dh, 'a'
 je qqColorA
+
     cmp dh, 'b'
 je qqColorB
+
     inc dl
     dec bx
 jmp qqColorNothing
 qqColorEnd:
-    sub dl, 2
+    dec dl
     test dl, dl
 je qqExit
+    dec dl
     add bx, 2
 qqColorNothing:
 
 ;;; set style
-    mov dh, byte ptr [bx]
-    sub dh, '0'
-    cmp dh, 1
-je qqStyle1
-    cmp dh, 2
-je qqStyle2
-    cmp dh, 3
-je qqStyle3
-    cmp dh, 4
-je qqStyle4
-    cmp dh, 5
-je qqStyle5
-    cmp dh, 6
-je qqStyle6
-jmp qqStyleNoting
+;;; di = cx = ([bx]-'0'-1)*2 + *qqJmpTable
+    xor cx, cx
+    mov cl, byte ptr [bx]
+    sub cl, '0'
+
+    test cl, cl
+je qqStyleNoting
+    cmp cl, 6
+jg qqStyleNoting
+
+    dec cx
+    shl cx, 1
+    add cx, offset qqJmpTable
+    mov di, cx
+    jmp [di]
+
+qqJmpTable:
+dw offset qqStyle1
+dw offset qqStyle2
+dw offset qqStyle3
+dw offset qqStyle4
+dw offset qqStyle5
+dw offset qqStyle6
+;;; if 0 and >6
+
 qqStyleEnd:
     mov di, offset Symbols  ; dest movsb
     mov cx, 9               ; count symbols
     rep movsb
-    sub dl, 2
+    dec dl
     test dl, dl
 je qqExit
+    dec dl
     add bx, 2
 qqStyleNoting:
 
@@ -162,6 +177,7 @@ qqExit:
     mov si, offset Symbols
     mov di, offset String
     ret
+
 
 qqColorA:
     mov ah, byte ptr [bx]
@@ -184,19 +200,20 @@ loop qqCycleColorB
     dec bx
 jmp qqColorEnd
 
-qqStyle1:
+
+qqStyle1:   
     mov si, offset Symbols1
 jmp qqStyleEnd
 
-qqStyle2:
+qqStyle2:   
     mov si, offset Symbols2
 jmp qqStyleEnd
 
-qqStyle3:
+qqStyle3:   
     mov si, offset Symbols3
 jmp qqStyleEnd
 
-qqStyle4:
+qqStyle4:   
     mov si, offset Symbols4
 jmp qqStyleEnd
 
@@ -478,7 +495,7 @@ Symbols2 db '~~~| |~~~'
 Symbols3 db '@*@| |@*@'
 Symbols4 db '///| |///'
 Symbols5 db '%%%| |%%%'
-Symbols  db '000000000'
+Symbols  db '123456789'
 String db 	'Sweat February 14th Valentine!', SYM_CR, \
 		   'Ded lox hihihi', SYM_CR, \
 		   'Mne sosal Stepa Gizunov', SYM_CR, \
