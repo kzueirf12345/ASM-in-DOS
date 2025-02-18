@@ -10,24 +10,38 @@ DEBUG_OFFSET		equ 880
 KEYBORARD_PORT      equ 60h
 ESCAPE_SCANCODE     equ 1
 KEYBOARD_INT        equ 09h
+TIMER_INT           equ 08h
 ABS_ADDR_SIZE       equ 4
+
+HOTKEY              equ 2ch                         ; ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
 
 ;=======================MAIN======================
 
 Start:
     xor ax, ax
     mov es, ax                                      ; es - zero segment
-    mov bx, KEYBOARD_INT*ABS_ADDR_SIZE              ; bx - address ptr on keyboard int
+    mov bx, TIMER_INT*ABS_ADDR_SIZE                 ; bx - address ptr on keyboard int
 
     cli                                             ; OFF system interapts
+    mov ax, word ptr es:[bx]                        ; Old08Of = es:[bx]
+    mov Old08Of, ax
+    mov ax, word ptr es:[bx+2]                      ; Old08Seg = es:[bx+2]
+    mov Old08Seg, ax
+;;; put TimerInt addr in 08h
+    mov word ptr es:[bx], offset TimerInt           ; put offset
+    push cs                                         ; put segment
+    pop ax
+    mov word ptr es:[bx+2], ax
 
-    mov ax, word ptr es:[bx]                        ; Old090f = es:[bx]
-    mov Old090f, ax
+    add bx, 4                                       ; bx - addr keyboard interapt
+
+    mov ax, word ptr es:[bx]                        ; Old09Of = es:[bx]
+    mov Old09Of, ax
     mov ax, word ptr es:[bx+2]                      ; Old09Seg = es:[bx+2]
     mov Old09Seg, ax
-    mov word ptr es:[bx], offset KeyboardInt        ; put offset in segment
-;;; put segment
-    push cs
+;;; put KeyboardInt addr in 09h
+    mov word ptr es:[bx], offset KeyboardInt        ; put offset
+    push cs                                         ; put segment
     pop ax
     mov word ptr es:[bx+2], ax
 
@@ -44,12 +58,40 @@ Start:
 ;=======================FUNCS======================
 
 ;---------------------------------------------
-;Descript: 	Func for keyboard interapt. Print clicked symbol
+;Descript: 	Func for keyboard interapt. Activate or deactivate print symbol
 ;Entry: 	None
 ;Exit: 		None
 ;Destroy: 	None
 ;---------------------------------------------
 KeyboardInt proc
+
+    push ax bx cx dx si di es ds                    ; save old regs state
+
+    in al, KEYBORARD_PORT                           ; al - clicked key
+    cmp al, HOTKEY
+jne qqRetHandling
+
+    xor cs:IsActive, 0FFh
+
+qqRetHandling:
+;;; return system handling keyboard interapts
+    pop ds es di si dx cx bx ax                     ; save old regs state
+db 0eah                                             ; long jump
+Old09Of     dw 0                                    ; offset in seg for jump
+Old09Seg    dw 0                                    ; seg for jump
+
+endp
+
+;---------------------------------------------
+;Descript: 	Func for timer interapt. Print clicked symbol
+;Entry: 	None
+;Exit: 		None
+;Destroy: 	None
+;---------------------------------------------
+TimerInt proc
+
+    cmp cs:IsActive, 0                              ; was hotkey clicked?
+je qqRetHandling
 
     push ax bx cx dx si di es ds                    ; save old regs state
  
@@ -60,20 +102,21 @@ KeyboardInt proc
     mov ah, 11101110b                               ; ah - color
     cld
 
-qqNextKey:
     in al, KEYBORARD_PORT                           ; al - clicked key
+    ; mov al, cs:IsActive
     stosw                                           ; print al with ah color on videoseg
-    sub di, 2                                       ; return di state after stosw
-    cmp al, ESCAPE_SCANCODE
-jne qqNextKey
 
-;;; return system handling keyboard interapts
     pop ds es di si dx cx bx ax                     ; save old regs state
+
+qqRetHandling:
+;;; return system handling Timer interapts
 db 0eah                                             ; long jump
-Old090f     dw 0                                    ; offset in seg for jump
-Old09Seg    dw 0                                    ; seg for jump
+Old08Of     dw 0                                    ; offset in seg for jump
+Old08Seg    dw 0                                    ; seg for jump
 
 endp
+
+IsActive db 00h
 
 NEEOP:
 end Start
