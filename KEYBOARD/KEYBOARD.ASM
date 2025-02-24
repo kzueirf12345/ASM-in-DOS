@@ -9,7 +9,7 @@ VIDEOSEG 			equ 0b800h
 WC_WIDTH			equ 80
 WC_HEIGHT			equ 25
 GC_RAMKA_GAP		equ 4
-VC_RAMKA_GAP		equ 2
+VC_RAMKA_GAP		equ 1
 
 ;;; DEBUG
 DEBUG_OFFSET		equ 880
@@ -26,6 +26,8 @@ ABS_ADDR_SIZE       equ 4
 ;;; Other
 HOTKEY              equ 2ch                         ; ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
 SYM_ENDLINE         equ 66h
+REGINFO_SIZE        equ 5+4
+REG_COUNT           equ 12
 
 ;=======================MAIN======================
 
@@ -111,19 +113,19 @@ je qqRetHandling
 ;;; print ramka
     call FillRegsState                              ; ochev
 
-;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
-    push cs
-    pop ds
-    mov si, offset cs:StrAX
-    mov ax, VIDEOSEG
-    mov es, ax
-    mov di, DEBUG_OFFSET
-    mov cx, (4+5+1)*12
-qqCycleDebug:
-    movsb
-    inc di
-loop qqCycleDebug
-;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
+; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
+;     push cs
+;     pop ds
+;     mov si, offset cs:StrAX
+;     mov ax, VIDEOSEG
+;     mov es, ax
+;     mov di, DEBUG_OFFSET
+;     mov cx, (4+5+1)*12
+; qqCycleDebug:
+;     movsb
+;     inc di
+; loop qqCycleDebug
+; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
     
 ;;; set normal dataseg
     push cs
@@ -134,10 +136,14 @@ loop qqCycleDebug
     xor di, di                                      ; di - offset ramka for PrintRamka
     mov si, offset cs:Symbols                       ; si - ramka's symbols for PrintRamka
     mov ah, DEBUG_COLOR_NB                          ; ah - color for PrintRamka
-    mov cx, 10-2                                    ; cx - ramka's width for PrintRamka
-    mov bx, 5-1                                     ; bx - ramka's height for PrintRamka
+    mov cx, REGINFO_SIZE+(GC_RAMKA_GAP*2)-2       ; cx - ramka's width for PrintRamka
+    mov bx, (REG_COUNT)+(VC_RAMKA_GAP*2)-1        ; bx - ramka's height for PrintRamka
 
     call PrintRamka 
+
+    xor di, di
+    mov si, offset cs:StrAX
+    call PrintRegs
 
     pop ds es di si dx cx bx ax                     ; save old regs state
 
@@ -288,7 +294,7 @@ endp
 ;Entry:     ES:DI = start to put str
 ;           AX = val
 ;Exit: 		Put string val in DI (skip first 5 symbols and 1 last)
-;           DI = next place after put + skip last 0
+;           DI = next place after put
 ;Destroy: 	AX
 ;---------------------------------------------
 ValToStr proc
@@ -315,7 +321,6 @@ ValToStr proc
     shr ax, 3*4                                     ; ax: T000 -> 000T
     call DigToStr                                   ; put 4th dig
 
-    inc di                                          ; skip last line symbol 0
     ret
 endp
 
@@ -345,26 +350,54 @@ qqIsDig:
     ret
 endp
 
+;---------------------------------------------
+;Descript: 	Print regs state on videoseg
+;Entry:     ES:DI = ramka place in videoseg (left top corner)
+;           DS:SI = start info about regs
+;Exit: 		None
+;Destroy: 	BX, CX, DI, SI
+;---------------------------------------------
+PrintRegs proc
+    add di,  GC_RAMKA_GAP*2                         ; add gorizontal offset
+
+    mov bx, REG_COUNT                               ; bx - regs counter
+qqCycle1:
+    add di, WC_WIDTH*2                              ; next line to print in videoseg
+    push di                                         ; save di
+
+    mov cx, REGINFO_SIZE                            ; cx - reginfo counter
+qqCycle2:
+    movsb                                           ; es:[di++] = ds:[si++]
+    inc di                                          ; skip color byte
+loop qqCycle2
+
+    pop di                                          ; save di
+    dec bx
+    test bx, bx                                     ; if (bx == 0)
+jne qqCycle1
+
+    ret
+endp
+
 ;=======================DATA======================
 
 Symbols         db '+-+| |+-+'
 IsActive        db 00h
 
-StrAX           db 'AX = 0000', 0
-StrBX           db 'BX = 0000', 0
-StrCX           db 'CX = 0000', 0
-StrDX           db 'DX = 0000', 0
+StrAX           db 'AX = 0000' 
+StrBX           db 'BX = 0000' 
+StrCX           db 'CX = 0000' 
+StrDX           db 'DX = 0000' 
 
-StrSI           db 'SI = 0000', 0
-StrDI           db 'DI = 0000', 0
-StrSP           db 'SP = 0000', 0
-StrBP           db 'BP = 0000', 0
+StrSI           db 'SI = 0000' 
+StrDI           db 'DI = 0000' 
+StrSP           db 'SP = 0000' 
+StrBP           db 'BP = 0000' 
 
-StrCS           db 'CS = 0000', 0
-StrDS           db 'DS = 0000', 0
-StrES           db 'ES = 0000', 0
-StrSS           db 'SS = 0000', 0, \
-                   SYM_ENDLINE
+StrCS           db 'CS = 0000' 
+StrDS           db 'DS = 0000' 
+StrES           db 'ES = 0000' 
+StrSS           db 'SS = 0000'
 
 SavedAX         dw 0001h
 SavedDI         dw 0001h
