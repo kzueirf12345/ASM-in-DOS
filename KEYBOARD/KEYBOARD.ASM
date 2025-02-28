@@ -4,6 +4,9 @@
 locals qq
 org 100h
 
+;//TODO stack regs handle
+;//TODO dig to str with hexTable "0123456789ABCDF"
+
 ;;; Window
 VIDEOSEG 			equ 0b800h
 WC_WIDTH			equ 80
@@ -27,47 +30,10 @@ ABS_ADDR_SIZE       equ 4
 HOTKEY              equ 2ch                         ; ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
 SYM_ENDLINE         equ 66h
 REGINFO_SIZE        equ 5+4
-REG_COUNT           equ 12
-
-;=======================MAIN======================
+REG_COUNT           equ 13
 
 Start:
-    xor ax, ax
-    mov es, ax                                      ; es - zero segment
-    mov bx, TIMER_INT*ABS_ADDR_SIZE                 ; bx - address ptr on keyboard int
-
-    cli                                             ; OFF system interapts
-    mov ax, word ptr es:[bx]                        ; Old08Of = es:[bx]
-    mov Old08Of, ax
-    mov ax, word ptr es:[bx+2]                      ; Old08Seg = es:[bx+2]
-    mov Old08Seg, ax
-;;; put TimerInt addr in 08h
-    mov word ptr es:[bx], offset TimerInt           ; put offset
-    push cs                                         ; put segment
-    pop ax
-    mov word ptr es:[bx+2], ax
-
-    add bx, 4                                       ; bx - addr keyboard interapt
-
-    mov ax, word ptr es:[bx]                        ; Old09Of = es:[bx]
-    mov Old09Of, ax
-    mov ax, word ptr es:[bx+2]                      ; Old09Seg = es:[bx+2]
-    mov Old09Seg, ax
-;;; put KeyboardInt addr in 09h
-    mov word ptr es:[bx], offset KeyboardInt        ; put offset
-    push cs                                         ; put segment
-    pop ax
-    mov word ptr es:[bx+2], ax
-
-    sti                                             ; ON system interapts
-
-
-;;; call DOS func for will be resident
-    mov ax, 3100h                                   ; ah - number funcs; al = 0 (exit code)
-    mov dx, offset NEEOP                            ; dx - count bytes to save
-    shr dx, 4                                       ; switch bytes to paragraphs
-    inc dx                                          ; for end
-    int 21h
+    jmp StartTrue
 
 ;=======================FUNCS======================
 
@@ -93,8 +59,6 @@ qqRetHandling:
 db 0eah                                             ; long jump
 Old09Of     dw 0                                    ; offset in seg for jump
 Old09Seg    dw 0                                    ; seg for jump
-
-    iret
 endp
 
 ;---------------------------------------------
@@ -108,10 +72,10 @@ TimerInt proc
     cmp byte ptr cs:IsActive, 0                              ; was hotkey clicked?
 je qqRetHandling
 
+    call FillRegsState                              ; ochev
     push ax bx cx dx si di es ds                    ; save old regs state
  
 ;;; print ramka
-    call FillRegsState                              ; ochev
 
 ; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
 ;     push cs
@@ -152,8 +116,6 @@ qqRetHandling:
 db 0eah                                             ; long jump
 Old08Of     dw 0                                    ; offset in seg for jump
 Old08Seg    dw 0                                    ; seg for jump
-
-    iret
 endp
 
 ;---------------------------------------------
@@ -226,64 +188,50 @@ endp
 ;Descript: 	Fill RegsStateStr
 ;Entry:     All regs with firstly state
 ;Exit: 		Fill RegsStateStr
-;Destroy: 	AX, DI, ES
+;Destroy: 	AX, BX, CX, DI, ES
 ;---------------------------------------------
 FillRegsState proc
+    push ax bx cx dx di es
 
-    mov cs:SavedES, es                              ; save es in var (use like seg for fill place)
-    mov cs:SavedDI, di                              ; save di in var (use like offset for fill place)
+    pop cs:SavedFillRegsRet                         ; save ret val FillRegsState
+    pop cs:SavedIp                                  ; save trully ip
+    pop cs:SavedCs                                  ; save trully cs
+;;; return vals in stack
+    push cs:SavedCs cs:SavedIp cs:SavedFillRegsRet
+
+    mov cs:SavedAx, ax                              ; save ax
+
+    mov ax, sp                                      ; ax - trully sp val
+    add ax, 5*2
+
+;;; push printed regs
+    push cs:SavedIp ss es ds cs:SavedCs bp ax di si dx cx bx cs:SavedAx
 
     push cs                                         ; es = cs for ValToStr
     pop es
 
     mov di, offset cs:StrAX                         ; for ValToStr
 
-;;; Fill ax (we need't move ax in ax)
+    mov dx, (REG_COUNT)*2                           ; cx - count printed regs * 2 (offset sp)
+qqCycle:
+    pop ax
     call ValToStr
 
-;;; Fill bx
-    mov ax, bx                                      ; ax - printed val
-    call ValToStr
+    sub dx, 2
+    test dx, dx
+jne qqCycle
 
-;;; Fill cx
-    mov ax, cx                                      ; ax - printed val
-    call ValToStr
+; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
+;     push si ax es di cx
+;     mov ax, VIDEOSEG
+;     mov es, ax
+;     mov di, DEBUG_OFFSET
+;     mov al, dl
+;     stosb
+;     pop cx di es ax si
+; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
 
-;;; Fill dx
-    mov ax, dx                                      ; ax - printed val
-    call ValToStr
-
-;;; Fill si
-    mov ax, si                                      ; ax - printed val
-    call ValToStr
-
-;;; Fill di
-    mov ax, word ptr cs:SavedDI                     ; ax - printed val
-    call ValToStr
-
-;;; Fill sp
-    mov ax, sp                                      ; ax - printed val
-    call ValToStr
-
-;;; Fill bp
-    mov ax, bp                                      ; ax - printed val
-    call ValToStr
-
-;;; Fill cs
-    mov ax, cs                                      ; ax - printed val
-    call ValToStr
-
-;;; Fill ds
-    mov ax, ds                                      ; ax - printed val
-    call ValToStr
-
-;;; Fill es
-    mov ax, word ptr cs:SavedES                     ; ax - printed val
-    call ValToStr
-
-;;; Fill ss
-    mov ax, ss                                      ; ax - printed val
-    call ValToStr
+    pop es di dx cx bx ax
 
 	ret
 endp
@@ -295,31 +243,24 @@ endp
 ;           AX = val
 ;Exit: 		Put string val in DI (skip first 5 symbols and 1 last)
 ;           DI = next place after put
-;Destroy: 	AX
+;Destroy: 	CX
 ;---------------------------------------------
 ValToStr proc
     add di, 5                                       ; skip first 5 symbols
 
+    mov ch, 4*4                                     ; ch - max left offset
+    xor cl, cl                                      ; cl=0 - counter cur left offset
+
+qqCycle:
     push ax                                         ; save val
-    shr ax, 3*4                                     ; ax: TFFF -> 000T
+    shl ax, cl                                      ; ax: remove left bytes
+    shr ax, 3*4                                     ; ax: remove right bytes
     call DigToStr                                   ; put 1th dig
     pop ax                                          ; save val
     
-    push ax                                         ; save val
-    shl ax, 1*4                                     ; ax: FTFF -> TFF0
-    shr ax, 3*4                                     ; ax: TFF0 -> 000T
-    call DigToStr                                   ; put 2th dig
-    pop ax                                          ; save val
-
-    push ax                                         ; save val
-    shl ax, 2*4                                     ; ax: FFTF -> TF00
-    shr ax, 3*4                                     ; ax: TF00 -> 000T
-    call DigToStr                                   ; put 3th dig
-    pop ax                                          ; save val
-
-    shl ax, 3*4                                     ; ax: FFFT -> T000
-    shr ax, 3*4                                     ; ax: T000 -> 000T
-    call DigToStr                                   ; put 4th dig
+    add cl, 4                                       ; next left offset
+    cmp ch, cl
+jne qqCycle
 
     ret
 endp
@@ -381,6 +322,8 @@ endp
 
 ;=======================DATA======================
 
+HexTable        db '0123456789ABCDEF'
+
 Symbols         db '+-+| |+-+'
 IsActive        db 00h
 
@@ -398,10 +341,53 @@ StrCS           db 'CS = 0000'
 StrDS           db 'DS = 0000' 
 StrES           db 'ES = 0000' 
 StrSS           db 'SS = 0000'
+StrIp           db 'IP = 0000'
 
-SavedAX         dw 0001h
-SavedDI         dw 0001h
-SavedES         dw 0001h
+SavedFillRegsRet        dw 0001h
+SavedIp                 dw 0001h
+SavedCs                 dw 0001h
+SavedAx                 dw 0001h
 
 NEEOP:
+
+;=======================MAIN======================
+
+StartTrue:
+    xor ax, ax
+    mov es, ax                                      ; es - zero segment
+    mov bx, TIMER_INT*ABS_ADDR_SIZE                 ; bx - address ptr on keyboard int
+
+    cli                                             ; OFF system interapts
+    mov ax, word ptr es:[bx]                        ; Old08Of = es:[bx]
+    mov Old08Of, ax
+    mov ax, word ptr es:[bx+2]                      ; Old08Seg = es:[bx+2]
+    mov Old08Seg, ax
+;;; put TimerInt addr in 08h
+    mov word ptr es:[bx], offset TimerInt           ; put offset
+    push cs                                         ; put segment
+    pop ax
+    mov word ptr es:[bx+2], ax
+
+    add bx, 4                                       ; bx - addr keyboard interapt
+
+    mov ax, word ptr es:[bx]                        ; Old09Of = es:[bx]
+    mov Old09Of, ax
+    mov ax, word ptr es:[bx+2]                      ; Old09Seg = es:[bx+2]
+    mov Old09Seg, ax
+;;; put KeyboardInt addr in 09h
+    mov word ptr es:[bx], offset KeyboardInt        ; put offset
+    push cs                                         ; put segment
+    pop ax
+    mov word ptr es:[bx+2], ax
+
+    sti                                             ; ON system interapts
+
+
+;;; call DOS func for will be resident
+    mov ax, 3100h                                   ; ah - number funcs; al = 0 (exit code)
+    mov dx, offset NEEOP                            ; dx - count bytes to save
+    shr dx, 4                                       ; switch bytes to paragraphs
+    inc dx                                          ; for end
+    int 21h
+
 end Start

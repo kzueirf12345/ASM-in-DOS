@@ -25,7 +25,10 @@ Start:
     ; mov ax, 9999h
     ; mov ss, ax
     mov ax, 1111h
-jmp Start
+Next:
+    push ax
+    pop ax
+jmp Next
 
 end Start
 
