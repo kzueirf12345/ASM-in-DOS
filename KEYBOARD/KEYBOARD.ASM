@@ -97,8 +97,16 @@ je qqRetHandling
 
     call FillRegsState                              ; ochev
     push ax bx cx dx si di es ds                    ; save old regs state
- 
+
 ;;; print ramka
+
+;;; check first buffer
+    mov ax, VIDEOSEG                                ; ds - videoseg ramka
+    mov ds, ax
+    xor bx, bx                                      ; bx - offset ramka in videoseg
+    mov si, offset cs:Buffer2                       ; si - ramka buffer for check                        
+    mov di, offset cs:Buffer1                       ; di - background changable buffer
+    call CheckBuffer
 
 ;;; set normal dataseg
     push cs
@@ -109,14 +117,23 @@ je qqRetHandling
     xor di, di                                      ; di - offset ramka for PrintRamka
     mov si, offset cs:Symbols                       ; si - ramka's symbols for PrintRamka
     mov ah, DEBUG_COLOR_NB                          ; ah - color for PrintRamka
-    mov cx, REGINFO_SIZE+(GC_RAMKA_GAP*2)-2       ; cx - ramka's width for PrintRamka
-    mov bx, (REG_COUNT)+(VC_RAMKA_GAP*2)-1        ; bx - ramka's height for PrintRamka
+    mov cx, REGINFO_SIZE+(GC_RAMKA_GAP*2)-2         ; cx - ramka's width for PrintRamka
+    mov bx, (REG_COUNT)+(VC_RAMKA_GAP*2)-1          ; bx - ramka's height for PrintRamka
 
     call PrintRamka 
 
-    xor di, di
-    mov si, offset cs:StrAX
+    xor di, di                                      ; di - offset ramka in videoseg
+    mov si, offset cs:StrAX                         ; si - start fillable buffer
     call PrintRegs
+
+;;; fill second buffer of ramka
+    mov ax, VIDEOSEG                                ; ds - source ramka videoseg
+    mov ds, ax
+    xor si, si                                      ; si - source offset ramka
+    push cs                                         ; es - dest buffer2 seg
+    pop es
+    mov di, offset cs:Buffer2                       ; di - dest offset buffer2
+    call FillBuffer
 
     pop ds es di si dx cx bx ax                     ; save old regs state
 qqRetHandling:
@@ -144,11 +161,11 @@ PrintRamka	proc
     pop di
     pop cx
 
-	add si, 3           ; next triple symbols
+	add si, 3                                       ; next triple symbols
 	test bx, bx
 je qqCycleEnd
 qqCycle:
-	add di, WC_WIDTH*2  ; next line
+	add di, WC_WIDTH*2                              ; next line
 
     push cx
     push di
@@ -161,8 +178,8 @@ qqCycle:
 jne qqCycle
 qqCycleEnd:
 
-	add si, 3           ; next triple symbols
-	add bx, WC_WIDTH*2  ; next line
+	add si, 3                                       ; next triple symbols
+	add bx, WC_WIDTH*2                              ; next line
 	call PrintLine
 
 	ret
@@ -259,6 +276,7 @@ endp
 ;Destroy: 	BX, CX
 ;---------------------------------------------
 ValToStr proc
+
     add di, 5                                       ; skip first 5 symbols
 
     mov ch, 4*4                                     ; ch - max left offset
@@ -288,6 +306,7 @@ endp
 ;Destroy: 	AL, BX
 ;---------------------------------------------
 DigToStr proc
+
     xor bx, bx                                      ; bx = al
     mov bl, al
 
@@ -306,6 +325,7 @@ endp
 ;Destroy: 	BX, CX, DI, SI
 ;---------------------------------------------
 PrintRegs proc
+
     add di,  GC_RAMKA_GAP*2                         ; add gorizontal offset
 
     mov bx, REG_COUNT                               ; bx - regs counter
@@ -335,16 +355,15 @@ endp
 ;Destroy: 	AX, CX, SI, DI
 ;---------------------------------------------
 FillBuffer proc
-    ; cli
 
-    mov ax, RAMKA_HEIGHT
+    mov ax, RAMKA_HEIGHT                            ; ax - counter
 qqCycle:
-    push si
+    push si                                         ; save si
     mov cx, RAMKA_WIDTH
-    repne movsw
-    pop si
+    repne movsw                                     ; move string
+    pop si                                          ; save si
 
-    add si, WC_WIDTH*2
+    add si, WC_WIDTH*2                              ; next string
     dec ax
     test ax, ax
 jne qqCycle
@@ -360,16 +379,15 @@ endp
 ;Destroy: 	AX, CX, SI, DI
 ;---------------------------------------------
 PrintBuffer proc
-    ; cli 
 
-    mov ax, RAMKA_HEIGHT
+    mov ax, RAMKA_HEIGHT                            ; ax - counter
 qqCycle:
-    push di
+    push di                                         ; save di
     mov cx, RAMKA_WIDTH
-    repne movsw
-    pop di
+    repne movsw                                     ; move string
+    pop di                                          ; save di
 
-    add di, WC_WIDTH*2
+    add di, WC_WIDTH*2                              ; next line
     dec ax
     test ax, ax
 jne qqCycle
@@ -377,6 +395,46 @@ jne qqCycle
     ret
 endp
 
+;---------------------------------------------
+;Descript: 	Check bytes in second and ramka buffer, fix first if miss match
+;Entry:     DS:BX = videomemory ramka
+;           CS:DI = address start first buffer
+;           CS:SI = address start second buffer 
+;Exit: 		Fix second buffer
+;Destroy: 	AX, BX, DX, CX, SI, DI
+;---------------------------------------------
+CheckBuffer proc
+
+    xor dx, dx                                      ; dx - counter to switch new string
+    mov cx, RAMKA_HEIGHT*RAMKA_WIDTH                ; cx - counter bytes
+    push bx                                         ; save bx prev line
+qqCycle:
+
+    cmp dx, RAMKA_WIDTH*2                           ; check next line
+jne qqNoNextLine
+    pop bx                                          ; save bx prev line
+    xor dx, dx                                      ; dx = 0
+    add bx, (WC_WIDTH)*2                            ; next line
+    push bx                                         ; save bx prev line
+qqNoNextLine:
+
+    mov ax, word ptr ds:[bx]
+    cmp ax, word ptr cs:[si]                        ; cmp word in videoseg and first buffer
+je qqEqual
+    mov ax, word ptr ds:[bx]                        ; move word from videoseg to second buffer
+    mov word ptr cs:[di], ax
+qqEqual:
+
+    add di, 2
+    add si, 2
+    add bx, 2
+    add dx, 2
+loop qqCycle
+
+    pop bx                                          ; save bx prev line
+
+    ret
+endp
 
 ;=======================DATA======================
 
@@ -406,8 +464,8 @@ SavedIp                 dw 0001h
 SavedCs                 dw 0001h
 SavedAx                 dw 0001h
 
-Buffer1         db (RAMKA_HEIGHT*RAMKA_WIDTH*2) DUP (11)
-; Buffer2         db (RAMKA_HEIGHT*RAMKA_WIDTH*2) DUP (22)
+Buffer1         db (RAMKA_HEIGHT*RAMKA_WIDTH*2) DUP (0)
+Buffer2         db (RAMKA_HEIGHT*RAMKA_WIDTH*2) DUP (0)
 
 NEEOP:
 
