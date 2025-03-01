@@ -8,8 +8,6 @@ org 100h
 VIDEOSEG 			equ 0b800h
 WC_WIDTH			equ 80
 WC_HEIGHT			equ 25
-GC_RAMKA_GAP		equ 4
-VC_RAMKA_GAP		equ 1
 
 ;;; DEBUG
 DEBUG_OFFSET		equ 880
@@ -23,11 +21,17 @@ KEYBOARD_INT        equ 09h
 TIMER_INT           equ 08h
 ABS_ADDR_SIZE       equ 4
 
+;;;Sizes
+REGINFO_SIZE        equ (5+4)
+REG_COUNT           equ 13
+GC_RAMKA_GAP		equ 4
+VC_RAMKA_GAP		equ 1
+RAMKA_WIDTH         equ ((GC_RAMKA_GAP*2)+REGINFO_SIZE)
+RAMKA_HEIGHT        equ ((VC_RAMKA_GAP*2)+REG_COUNT)
+
 ;;; Other
 HOTKEY              equ 2ch                         ; ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
 SYM_ENDLINE         equ 66h
-REGINFO_SIZE        equ 5+4
-REG_COUNT           equ 13
 
 Start:
     jmp StartTrue
@@ -42,7 +46,7 @@ Start:
 ;---------------------------------------------
 KeyboardInt proc
 
-    push ax                                         ; save old regs state
+    push ax cx si di es ds                          ; save old regs state
 
     in al, KEYBORARD_PORT                           ; al - clicked key
     cmp al, HOTKEY
@@ -50,9 +54,31 @@ jne qqRetHandling
 
     xor byte ptr cs:IsActive, 0FFh
 
+    cmp byte ptr cs:IsActive, 0                     ; was hotkey swithed on false?
+je qqNoActive
+
+    mov ax, VIDEOSEG                                ; ds - source ramka videoseg
+    mov ds, ax
+    xor si, si                                      ; si - source offset ramka
+    push cs                                         ; es - dest buffer1 seg
+    pop es
+    mov di, offset cs:Buffer1                       ; di - dest offset buffer1
+    call FillBuffer
+
+jmp qqRetHandling
+qqNoActive:
+
+    mov ax, VIDEOSEG                                ; es - dest ramka videoseg
+    mov es, ax
+    xor di, di                                      ; di - dest offset ramka
+    push cs                                         ; ds - source buffer1 seg
+    pop ds
+    mov si, offset cs:Buffer1                       ; si - source offset buffer1
+    call PrintBuffer
+
 qqRetHandling:
 ;;; return system handling keyboard interapts
-    pop ax                                          ; save old regs state
+    pop ds es di si cx ax                           ; save old regs state
 db 0eah                                             ; long jump
 Old09Of     dw 0                                    ; offset in seg for jump
 Old09Seg    dw 0                                    ; seg for jump
@@ -66,7 +92,7 @@ endp
 ;---------------------------------------------
 TimerInt proc
 
-    cmp byte ptr cs:IsActive, 0                              ; was hotkey clicked?
+    cmp byte ptr cs:IsActive, 0                     ; was hotkey clicked?
 je qqRetHandling
 
     call FillRegsState                              ; ochev
@@ -74,20 +100,6 @@ je qqRetHandling
  
 ;;; print ramka
 
-; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
-;     push cs
-;     pop ds
-;     mov si, offset cs:StrAX
-;     mov ax, VIDEOSEG
-;     mov es, ax
-;     mov di, DEBUG_OFFSET
-;     mov cx, (4+5+1)*12
-; qqCycleDebug:
-;     movsb
-;     inc di
-; loop qqCycleDebug
-; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
-    
 ;;; set normal dataseg
     push cs
     pop ds
@@ -107,7 +119,6 @@ je qqRetHandling
     call PrintRegs
 
     pop ds es di si dx cx bx ax                     ; save old regs state
-
 qqRetHandling:
 ;;; return system handling Timer interapts
 db 0eah                                             ; long jump
@@ -316,6 +327,57 @@ jne qqCycle1
     ret
 endp
 
+;---------------------------------------------
+;Descript: 	Fill buffer
+;Entry:     DS:SI = address start ramka for save
+;           ES:DI = address start buffer
+;Exit: 		Fill buffer
+;Destroy: 	AX, CX, SI, DI
+;---------------------------------------------
+FillBuffer proc
+    ; cli
+
+    mov ax, RAMKA_HEIGHT
+qqCycle:
+    push si
+    mov cx, RAMKA_WIDTH
+    repne movsw
+    pop si
+
+    add si, WC_WIDTH*2
+    dec ax
+    test ax, ax
+jne qqCycle
+
+    ret
+endp
+
+;---------------------------------------------
+;Descript: 	Print buffer
+;Entry:     DS:SI = address start buffer
+;           ES:DI = address start ramka print
+;Exit: 		Fill buffer
+;Destroy: 	AX, CX, SI, DI
+;---------------------------------------------
+PrintBuffer proc
+    ; cli 
+
+    mov ax, RAMKA_HEIGHT
+qqCycle:
+    push di
+    mov cx, RAMKA_WIDTH
+    repne movsw
+    pop di
+
+    add di, WC_WIDTH*2
+    dec ax
+    test ax, ax
+jne qqCycle
+
+    ret
+endp
+
+
 ;=======================DATA======================
 
 HexTable        db '0123456789ABCDEF'
@@ -343,6 +405,9 @@ SavedFillRegsRet        dw 0001h
 SavedIp                 dw 0001h
 SavedCs                 dw 0001h
 SavedAx                 dw 0001h
+
+Buffer1         db (RAMKA_HEIGHT*RAMKA_WIDTH*2) DUP (11)
+; Buffer2         db (RAMKA_HEIGHT*RAMKA_WIDTH*2) DUP (22)
 
 NEEOP:
 
@@ -377,7 +442,6 @@ StartTrue:
     mov word ptr es:[bx+2], ax
 
     sti                                             ; ON system interapts
-
 
 ;;; call DOS func for will be resident
     mov ax, 3100h                                   ; ah - number funcs; al = 0 (exit code)
