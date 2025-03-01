@@ -2,7 +2,7 @@
 .code
 org 100h
 start:
-	mov ah, 02h
+	mov ah, 09h
 	mov dx, offset Vstring
 	int 21h
 	mov ax, 4c00h
