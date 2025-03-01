@@ -4,9 +4,6 @@
 locals qq
 org 100h
 
-;//TODO stack regs handle
-;//TODO dig to str with hexTable "0123456789ABCDF"
-
 ;;; Window
 VIDEOSEG 			equ 0b800h
 WC_WIDTH			equ 80
@@ -188,26 +185,40 @@ endp
 ;Descript: 	Fill RegsStateStr
 ;Entry:     All regs with firstly state
 ;Exit: 		Fill RegsStateStr
-;Destroy: 	AX, BX, CX, DI, ES
+;Destroy: 	None
 ;---------------------------------------------
 FillRegsState proc
-    push ax bx cx dx di es
 
-    pop cs:SavedFillRegsRet                         ; save ret val FillRegsState
-    pop cs:SavedIp                                  ; save trully ip
-    pop cs:SavedCs                                  ; save trully cs
-;;; return vals in stack
-    push cs:SavedCs cs:SavedIp cs:SavedFillRegsRet
+    push bx cx dx di si es                          ; save regs
 
-    mov cs:SavedAx, ax                              ; save ax
+    push ax                                         ; save ax
 
     mov ax, sp                                      ; ax - trully sp val
-    add ax, 5*2
+    add ax, (5+6)*2
 
-;;; push printed regs
-    push cs:SavedIp ss es ds cs:SavedCs bp ax di si dx cx bx cs:SavedAx
+;;; push printed regs (without ax)
+    push 1111h ss es ds 0cccch bp ax di si dx cx bx
 
-    push cs                                         ; es = cs for ValToStr
+;;; push trully ax
+    mov di, sp                                      ; di = sp + (REG_COUNT-1)*2 - ax addr
+    add di, (REG_COUNT-1)*2
+    push ss:[di]
+
+;;; mov ip in its stack place
+    sub di, (1)*2                                   ; di - ip place
+    mov si, sp
+    add si, (REG_COUNT+8)*2                         ; si - ip addr
+    mov si, ss:[si]                                 ; mov ss:[di] = ss:[si]
+    mov ss:[di], si
+
+; ;;; mov cs in its stack place
+    mov si, sp                                      ; si - cs addr
+    add si, (REG_COUNT+9)*2
+    sub di, (4)*2                                   ; di - cs place
+    mov si, ss:[si]                                 ; mov ss:[di] = ss:[si]
+    mov ss:[di], si
+
+    push cs                                         ; for ValToStr
     pop es
 
     mov di, offset cs:StrAX                         ; for ValToStr
@@ -220,18 +231,9 @@ qqCycle:
     sub dx, 2
     test dx, dx
 jne qqCycle
+    pop ax                                          ; save ax
 
-; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
-;     push si ax es di cx
-;     mov ax, VIDEOSEG
-;     mov es, ax
-;     mov di, DEBUG_OFFSET
-;     mov al, dl
-;     stosb
-;     pop cx di es ax si
-; ;;; DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG-DEBUG
-
-    pop es di dx cx bx ax
+    pop es si di dx cx bx                           ; save regs
 
 	ret
 endp
@@ -243,7 +245,7 @@ endp
 ;           AX = val
 ;Exit: 		Put string val in DI (skip first 5 symbols and 1 last)
 ;           DI = next place after put
-;Destroy: 	CX
+;Destroy: 	BX, CX
 ;---------------------------------------------
 ValToStr proc
     add di, 5                                       ; skip first 5 symbols
@@ -272,21 +274,15 @@ endp
 ;           AL = val <= 16
 ;Exit: 		Put string digit in DI
 ;           DI = next place after put
-;Destroy: 	AL
+;Destroy: 	AL, BX
 ;---------------------------------------------
 DigToStr proc
-    cmp al, 09h                                     ; xheck what we need to add
-jg qqIsAlpha
+    xor bx, bx                                      ; bx = al
+    mov bl, al
 
-    add al, '0'                                     ; val + "0" (0-9)
-jmp qqIsDig
+    mov al, byte ptr cs:[offset cs:HexTable + bx]   ; al = HexTable[bx]
 
-qqIsAlpha:
-    add al, 'A' - 10                                ; val + "A" - 10 (A-F)
-
-qqIsDig:
-
-    stosb                                           ; ES:[DI++] = AL
+    stosb                                           ; es:[di++] = al
 
     ret
 endp
