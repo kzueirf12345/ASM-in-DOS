@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
 
 #define WINDOW_WIDTH    800
 #define WINDOW_HEIGHT   600
@@ -30,84 +33,61 @@
     } while(0)
 
 int crack(const char* const filename);
+int do_SDL(const char* const img_filename);
+int play_videos(const char* const * const videos, const size_t videos_size);
 
 int main()
 {
+    const char *videos[] = {
+        "assets/video1.mp4",
+        "assets/video2.mp4",
+        "assets/video3.mp4",
+        "assets/video4.mp4",
+        "assets/video5.mp4",
+    };
+    size_t videos_size = sizeof(videos) / sizeof(*videos);
 
-    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    pid_t pid1 = fork();
+
+    if (pid1 == 0)
     {
-        printf("Can't init SDL: %s\n", SDL_GetError());
-        return EXIT_FAILURE;
-    }
-
-    SDL_Window* window = SDL_CreateWindow
-    (
-        "Hello SDL",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        WINDOW_WIDTH,
-        WINDOW_HEIGHT,
-        SDL_WINDOW_SHOWN
-    );
-
-    if (!window)
-    {
-        printf("Can't create window: %s\n", SDL_GetError());
-        SDL_Quit();
-        return EXIT_FAILURE;
-    }
-
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (renderer == NULL)
-    {
-        printf("Can't create renderer: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return EXIT_FAILURE;
-    }
-
-    bool quit = false;
-    SDL_Event event;
-    while (!quit)
-    {
-        while (SDL_PollEvent(&event)) 
+        pid_t pid2 = fork();
+        if (pid2 == 0)
         {
-            if (event.type == SDL_QUIT) 
-                quit = true;
+            ERROR_HANDLE(play_videos(videos, videos_size));
+        }
+        else if (pid2 > 0)
+        {
+            ERROR_HANDLE(do_SDL("assets/freddi.png"));
+            if (wait(NULL) == -1)
+            {
+                perror("Can't wait play_videos process");
+                return EXIT_FAILURE;
+            }
+        }
+        else
+        {
+            perror("Can't fork process pid2");
+            return EXIT_FAILURE;
+        }
+    }
+    else if (pid1 > 0)
+    {
+        ERROR_HANDLE(crack("assets/crackme.com"));
+        
+        if (wait(NULL) == -1)
+        {
+            perror("Can't wait rofl processes");
+            return EXIT_FAILURE;
         }
 
-        SDL_ERROR_HANDLE(SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255),
-                                 SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();
-        );
-
-        SDL_ERROR_HANDLE(SDL_RenderClear(renderer),
-                                 SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();
-        );
-
-        SDL_ERROR_HANDLE(SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255),
-                                 SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();
-        );
-
-
-        SDL_Rect rect = {100, 100, 200, 150};
-
-        SDL_ERROR_HANDLE(SDL_RenderFillRect(renderer, &rect),
-                                 SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();
-        );
-
-        SDL_RenderPresent(renderer);
+        printf("Crack was successful!\n");
     }
-
-                                 SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();
-
-    int error_crack_handler = crack("crackme.com");
-    if (error_crack_handler)
+    else
     {
-        fprintf(stderr, "Can't crack\n");
-        return error_crack_handler;
+        perror("Can't fork process pid1");
+        return EXIT_FAILURE;
     }
-
-    printf("Crack was successful!\n");
     
     return EXIT_SUCCESS;
 }
@@ -141,6 +121,128 @@ int crack(const char* const filename)
     {
         perror("Can't close file");
         return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int do_SDL(const char* const img_filename)
+{
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    {
+        printf("Can't init SDL: %s\n", SDL_GetError());
+        return EXIT_FAILURE;
+    }
+
+    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG))
+    {
+        printf("Can't init SDL_image: %s\n", IMG_GetError());
+                                                                                         SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    SDL_DisplayMode display_mode;
+    SDL_ERROR_HANDLE(SDL_GetCurrentDisplayMode(0, &display_mode),
+                                                                              IMG_Quit();SDL_Quit();
+    );
+
+
+    SDL_Window* window = SDL_CreateWindow(
+        "GovnOS present",
+        SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
+        WINDOW_WIDTH,
+        WINDOW_HEIGHT,
+        SDL_WINDOW_SHOWN //| SDL_WINDOW_FULLSCREEN
+    );
+
+    if (!window)
+    {
+        printf("Can't create window: %s\n", SDL_GetError());
+                                                                              SDL_Quit();IMG_Quit();
+        return EXIT_FAILURE;
+    }
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (!renderer)
+    {
+        printf("Can't create renderer: %s\n", SDL_GetError());
+                                                    SDL_DestroyWindow(window);SDL_Quit();IMG_Quit();
+        return EXIT_FAILURE;
+    }
+
+    SDL_Surface* image_surface = IMG_Load(img_filename);
+    if (!image_surface)
+    {
+        printf("Can't load img: %s\n", IMG_GetError());
+                      SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);IMG_Quit();SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    SDL_Texture* image_texture = SDL_CreateTextureFromSurface(renderer, image_surface);
+                                                                     SDL_FreeSurface(image_surface);
+    if (!image_texture)
+    {
+        printf("Can't create texture img: %s\n", SDL_GetError());
+                      SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);IMG_Quit();SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    bool quit = false;
+    SDL_Event event;
+    while (!quit)
+    {
+        while (SDL_PollEvent(&event)) 
+        {
+            if (event.type == SDL_QUIT) 
+                quit = true;
+        }
+
+        SDL_ERROR_HANDLE(SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255),
+                                 SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();
+        );
+
+        SDL_ERROR_HANDLE(SDL_RenderClear(renderer),
+                                 SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_Quit();
+        );
+
+        SDL_RenderCopy(renderer, image_texture, NULL, NULL);
+
+        SDL_RenderPresent(renderer);
+    }
+
+          SDL_DestroyTexture(image_texture);SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);
+                                                                              IMG_Quit();SDL_Quit();
+
+    return EXIT_SUCCESS;
+}
+
+int play_videos(const char* const * const videos, const size_t videos_size)
+{
+    for (size_t i = 0; i < videos_size; ++i)
+    {
+        pid_t pid = fork();
+
+        if (pid == 0)
+        {
+            execlp("mpv", "mpv", "--no-terminal", "--geometry=1000x1000+0+0", videos[i], NULL);
+
+            perror("Can't played video with mpv");
+            return EXIT_FAILURE;
+        } else if (pid < 0)
+        {
+            perror("Can't fork daughter process");
+            return EXIT_FAILURE;
+        }
+    }
+
+    for (size_t i = 0; i < videos_size; ++i)
+    {
+        if (wait(NULL) == -1)
+        {
+            perror("Can't wait videos process");
+            return EXIT_FAILURE;
+        }
     }
 
     return EXIT_SUCCESS;
