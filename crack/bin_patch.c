@@ -36,6 +36,8 @@ int crack(const char* const filename);
 int do_SDL(const char* const img_filename);
 int play_videos(const char* const * const videos, const size_t videos_size);
 
+int wait_for_process(const pid_t pid);
+
 int main()
 {
     const char *videos[] = {
@@ -47,23 +49,19 @@ int main()
     };
     size_t videos_size = sizeof(videos) / sizeof(*videos);
 
-    pid_t pid1 = fork();
+    pid_t pid = fork();
 
-    if (pid1 == 0)
+    if (pid == 0)
     {
-        pid_t pid2 = fork();
-        if (pid2 == 0)
+        pid = fork();
+        if (pid == 0)
         {
             ERROR_HANDLE(play_videos(videos, videos_size));
         }
-        else if (pid2 > 0)
+        else if (pid > 0)
         {
             ERROR_HANDLE(do_SDL("assets/freddi.png"));
-            if (wait(NULL) == -1)
-            {
-                perror("Can't wait play_videos process");
-                return EXIT_FAILURE;
-            }
+            ERROR_HANDLE(wait_for_process(pid));
         }
         else
         {
@@ -71,15 +69,11 @@ int main()
             return EXIT_FAILURE;
         }
     }
-    else if (pid1 > 0)
+    else if (pid > 0)
     {
         ERROR_HANDLE(crack("assets/crackme.com"));
         
-        if (wait(NULL) == -1)
-        {
-            perror("Can't wait rofl processes");
-            return EXIT_FAILURE;
-        }
+        ERROR_HANDLE(wait_for_process(pid));
 
         printf("Crack was successful!\n");
     }
@@ -103,7 +97,8 @@ int crack(const char* const filename)
 
     long byte_position = 0x3a;
 
-    if (fseek(file, byte_position, SEEK_SET)) {
+    if (fseek(file, byte_position, SEEK_SET))
+    {
         perror("Can't fseek to byte position");
         fclose(file);
         return EXIT_FAILURE;
@@ -111,7 +106,8 @@ int crack(const char* const filename)
 
     unsigned char new_byte = 0x74;
 
-    if (fwrite(&new_byte, sizeof(new_byte), 1, file) != 1) {
+    if (fwrite(&new_byte, sizeof(new_byte), 1, file) != 1)
+    {
         perror("Can't fwrite new byte");
         fclose(file);
         return EXIT_FAILURE;
@@ -153,7 +149,7 @@ int do_SDL(const char* const img_filename)
         SDL_WINDOWPOS_CENTERED,
         WINDOW_WIDTH,
         WINDOW_HEIGHT,
-        SDL_WINDOW_SHOWN //| SDL_WINDOW_FULLSCREEN
+        SDL_WINDOW_SHOWN
     );
 
     if (!window)
@@ -243,6 +239,25 @@ int play_videos(const char* const * const videos, const size_t videos_size)
             perror("Can't wait videos process");
             return EXIT_FAILURE;
         }
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int wait_for_process(const pid_t pid)
+{
+    int status;
+
+    if (waitpid(pid, &status, 0) == -1)
+    {
+        fprintf(stderr, "Can't waitpid process. Pid: %d\n", status);
+        return EXIT_FAILURE;
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status))
+    {
+        fprintf(stderr, "Child process exited with an error. Parent pid: %d\n", status);
+        return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;
