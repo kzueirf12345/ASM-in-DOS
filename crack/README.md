@@ -90,7 +90,7 @@ Lomaem:
     pop es bx ax
 
     pop cs:[Save_ip]
-    push 0144h
+    push 013dh
 
     push ax
     mov ax, 20h
