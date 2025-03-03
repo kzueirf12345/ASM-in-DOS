@@ -149,7 +149,7 @@ int do_SDL(const char* const img_filename)
         SDL_WINDOWPOS_CENTERED,
         WINDOW_WIDTH,
         WINDOW_HEIGHT,
-        SDL_WINDOW_SHOWN
+        SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN
     );
 
     if (!window)
@@ -221,7 +221,7 @@ int play_videos(const char* const * const videos, const size_t videos_size)
 
         if (pid == 0)
         {
-            execlp("mpv", "mpv", "--no-terminal", "--geometry=1000x1000+0+0", videos[i], NULL);
+            execlp("mpv", "mpv", "--no-terminal", "--geometry=50%x50%+50%+50%", videos[i], NULL);
 
             perror("Can't played video with mpv");
             return EXIT_FAILURE;
