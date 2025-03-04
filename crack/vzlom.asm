@@ -19,7 +19,7 @@ SYM_LF				equ 0ah
 SYM_CR				equ 0dh
 
 ;;; Other
-PASSWORD_SIZE       equ 16
+PASSWORD_SIZE       equ 17
 
 ;=======================MAIN======================
 
@@ -63,15 +63,15 @@ qqTruth:
 ;=======================DATA======================
 .data 
 
-HelloStr            db "Hello my little gay boy, just crack me!", SYM_CR, SYM_LF, '$'
+HelloStr            db "Hello user, just crack me!", SYM_CR, SYM_LF, '$'
 HelloPasswordStr    db "Password: ", '$'
 
 EnteredPassword     db PASSWORD_SIZE DUP (0)
 
-Password            db "I_LITTLE_GAY_BOY"
+Password            db "Original_password"
 
-TruthStr            db SYM_CR, SYM_LF, "SOSAL", SYM_CR, SYM_LF, '$'
-LieStr              db SYM_CR, SYM_LF, "NE SOSAL LOX", SYM_CR, SYM_LF, '$'
+TruthStr            db SYM_CR, SYM_LF, "CORRECT", SYM_CR, SYM_LF, '$'
+LieStr              db SYM_CR, SYM_LF, "INCORRECT", SYM_CR, SYM_LF, '$'
 
 .code
 qqUlovka1:

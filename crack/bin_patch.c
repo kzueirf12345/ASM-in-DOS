@@ -51,6 +51,7 @@ int main()
         "assets/video8.mp4",
         "assets/video9.mp4",
         "assets/video10.mp4",
+        "assets/video11.mp4",
     };
     size_t videos_size = sizeof(videos) / sizeof(*videos);
 
